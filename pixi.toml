@@ -1,0 +1,22 @@
+[workspace]
+authors = ["Eric Page <genamthi@gmail.com>"]
+channels = ["conda-forge"]
+name = "funbuns"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+calcpp = "python -m funbuns"
+calcpp-resume = "python -m funbuns --resume"
+calcpp-view = "python -m funbuns --view -n 1"
+
+[dependencies]
+polars = ">=1.32.0,<2"
+sagelib = ">=10.6,<11"
+altair = ">=5.5.0,<6"
+tqdm = ">=4.67.1,<5"
+psutil = ">=6.1.0,<7"
+
+
+[pypi-dependencies]
+funbuns = { path = ".", editable = true }

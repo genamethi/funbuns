@@ -1,0 +1,21 @@
+Metadata-Version: 2.4
+Name: funbuns
+Version: 0.1.0
+Summary: Prime decomposition analysis: p = 2^m + q^n
+Author: erpage159
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Science/Research
+Classifier: Topic :: Scientific/Engineering :: Mathematics
+Classifier: Programming Language :: Python :: 3
+Classifier: Programming Language :: Python :: 3.12
+Classifier: Programming Language :: Python :: 3.13
+Requires-Python: >=3.12
+Requires-Dist: sagemath
+Requires-Dist: polars
+Requires-Dist: tqdm
+Requires-Dist: psutil
+Dynamic: author
+Dynamic: classifier
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
