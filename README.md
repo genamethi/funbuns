@@ -100,7 +100,7 @@ The core algorithm for each prime `p`:
 1. **Bound computation**: `max_m = floor(log₂(p))`
 2. **Outer loop**: For `m ∈ [1, max_m]`
    - Compute `q_cand = p - 2^m`
-   - Compute `max_n = floor(log₃(q_cand))`
+   - Compute `max_n = floor(log₃(q_cand))` ## we'll use small primes cache in the future then largest small prime (LSP) + 1 will be our log divider log(q_cand)/log(next_prime(LSP)) pseudocoded.
 3. **Inner loop**: For `n ∈ [1, max_n]`
    - Try `q = q_cand^(1/n)` (nth root)
    - If exact integer root exists and `q` is prime: record `(m, n, q)`

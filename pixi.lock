@@ -129,15 +129,15 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/pickleshare-0.7.5-pyhd8ed1ab_1004.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/planarity-3.0.2.0-hd590300_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/platformdirs-4.3.8-pyhe01879c_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/polars-1.32.0-default_h9382660_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/polars-default-1.32.0-py39hf521cc8_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/polars-1.32.0-default_hac8f6d3_1.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/polars-default-1.32.0-py39hf521cc8_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/ppl-1.2-h6ec01c2_1006.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/linux-64/pplpy-0.8.9-py312h7383a07_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/primecount-7.14-h530483c_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/primecountpy-0.1.0-py312h68727a3_5.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/primesieve-12.4-he02047a_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/prompt-toolkit-3.0.51-pyha770c72_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/psutil-6.1.1-py312h66e93f0_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/psutil-7.0.0-py312h66e93f0_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/ptyprocess-0.7.0-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pure_eval-0.2.3-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/pygments-2.19.2-pyhd8ed1ab_0.conda
@@ -147,7 +147,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/python_abi-3.12-8_cp312.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/readline-8.2-h8c095d6_2.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/referencing-0.36.2-pyh29332c3_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/linux-64/rpds-py-0.26.0-py312h680f630_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/rpds-py-0.27.0-py312h868fb18_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/rw-0.9-hd590300_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/sagelib-10.6-py312h047bf7c_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/singular-4.4.1-h7ee4ccf_1.conda
@@ -566,7 +566,7 @@ packages:
 - pypi: ./
   name: funbuns
   version: 0.1.0
-  sha256: 2ce4bef45e0e9292feae586304d0ba324324c311b96524435175528a42f5d212
+  sha256: 06613dff1c1d3f4c19d317c78fb7fcab43af993be8afcbad464bf0ecdc382bc6
   requires_dist:
   - sagemath
   - polars
@@ -1751,23 +1751,21 @@ packages:
   - pkg:pypi/platformdirs?source=hash-mapping
   size: 23531
   timestamp: 1746710438805
-- conda: https://conda.anaconda.org/conda-forge/linux-64/polars-1.32.0-default_h9382660_0.conda
-  sha256: f524ab7cf013c1daad172564878ba07cdc8a55e3a57ccab19da78e44adbca3a9
-  md5: 5cde68a069c8262c9b49225db27f7ba0
+- conda: https://conda.anaconda.org/conda-forge/linux-64/polars-1.32.0-default_hac8f6d3_1.conda
+  sha256: 6646a9a6ade09a4038bbf77882e6d7939a5ded1a6d14ac5907409698832bab27
+  md5: 92cb09b7f68ea274695292217cd79c9e
   depends:
-  - polars-default ==1.32.0 py39hf521cc8_0
+  - polars-default ==1.32.0 py39hf521cc8_1
   license: MIT
-  license_family: MIT
   purls: []
-  size: 5690
-  timestamp: 1754379458134
-- conda: https://conda.anaconda.org/conda-forge/linux-64/polars-default-1.32.0-py39hf521cc8_0.conda
+  size: 5729
+  timestamp: 1754568257934
+- conda: https://conda.anaconda.org/conda-forge/linux-64/polars-default-1.32.0-py39hf521cc8_1.conda
   noarch: python
-  sha256: c0d9d2b93183be64b037a3cd72ae7b58eba8947c66a70c67f9cf721eed80d847
-  md5: ed6d7e61e3ebaaa81538f87d643217a8
+  sha256: 979edbd4ba8fd8137f5d603446147be495359aed6f069eadc3e36621fcd8fe21
+  md5: e70c9d78efe27cc42c6e205f19707a4b
   depends:
   - python
-  - libgcc >=14
   - __glibc >=2.17,<3.0.a0
   - libstdcxx >=14
   - libgcc >=14
@@ -1784,13 +1782,14 @@ packages:
   - pyiceberg >=0.7.1
   - altair >=5.4.0
   - great_tables >=0.8.0
+  - polars-lts-cpu <0.0.0a0
+  - polars-u64-idx <0.0.0a0
   - __glibc >=2.17
   license: MIT
-  license_family: MIT
   purls:
   - pkg:pypi/polars?source=hash-mapping
-  size: 31248284
-  timestamp: 1754379458134
+  size: 31248418
+  timestamp: 1754568257934
 - conda: https://conda.anaconda.org/conda-forge/linux-64/ppl-1.2-h6ec01c2_1006.tar.bz2
   sha256: a19ca6bb4c035a237e1f5623989db9c080d407a8998ef731dadd314aa3ef45e7
   md5: 1d19705c171ccc0d87011a82bbe6bb90
@@ -1882,9 +1881,9 @@ packages:
   - pkg:pypi/prompt-toolkit?source=hash-mapping
   size: 271841
   timestamp: 1744724188108
-- conda: https://conda.anaconda.org/conda-forge/linux-64/psutil-6.1.1-py312h66e93f0_0.conda
-  sha256: 55d4fd0b294aeada0d7810fcc25503b59ec34c4390630789bd61c085b9ce649f
-  md5: add2c79595fa8a9b6d653d7e4e2cf05f
+- conda: https://conda.anaconda.org/conda-forge/linux-64/psutil-7.0.0-py312h66e93f0_0.conda
+  sha256: 158047d7a80e588c846437566d0df64cec5b0284c7184ceb4f3c540271406888
+  md5: 8e30db4239508a538e4a3b3cdf5b9616
   depends:
   - __glibc >=2.17,<3.0.a0
   - libgcc >=13
@@ -1894,8 +1893,8 @@ packages:
   license_family: BSD
   purls:
   - pkg:pypi/psutil?source=hash-mapping
-  size: 487053
-  timestamp: 1735327468212
+  size: 466219
+  timestamp: 1740663246825
 - conda: https://conda.anaconda.org/conda-forge/noarch/ptyprocess-0.7.0-pyhd8ed1ab_1.conda
   sha256: a7713dfe30faf17508ec359e0bc7e0983f5d94682492469bd462cdaae9c64d83
   md5: 7d9daffbb8d8e0af0f769dbbcd173a54
@@ -2018,22 +2017,21 @@ packages:
   - pkg:pypi/referencing?source=hash-mapping
   size: 51668
   timestamp: 1737836872415
-- conda: https://conda.anaconda.org/conda-forge/linux-64/rpds-py-0.26.0-py312h680f630_0.conda
-  sha256: bb051358e7550fd8ef9129def61907ad03853604f5e641108b1dbe2ce93247cc
-  md5: 5b251d4dd547d8b5970152bae2cc1600
+- conda: https://conda.anaconda.org/conda-forge/linux-64/rpds-py-0.27.0-py312h868fb18_0.conda
+  sha256: cfc9c79f0e2658754b02efb890fe3c835d865ed0535155787815ae16e56dbe9c
+  md5: 3d3d11430ec826a845a0e9d6ccefa294
   depends:
   - python
   - __glibc >=2.17,<3.0.a0
-  - libgcc >=13
+  - libgcc >=14
   - python_abi 3.12.* *_cp312
   constrains:
   - __glibc >=2.17
   license: MIT
-  license_family: MIT
   purls:
-  - pkg:pypi/rpds-py?source=hash-mapping
-  size: 389020
-  timestamp: 1751467350968
+  - pkg:pypi/rpds-py?source=compressed-mapping
+  size: 388899
+  timestamp: 1754570135763
 - conda: https://conda.anaconda.org/conda-forge/linux-64/rw-0.9-hd590300_2.conda
   sha256: f0b727dcbcbd4592d87b8f92b2a17e2f6a549d5ec3156c005e0feb9543dfea5d
   md5: 926075db3f5de96cc4c458b84ef71477

@@ -1,8 +1,10 @@
+README.md
 setup.py
 src/funbuns/__init__.py
 src/funbuns/__main__.py
 src/funbuns/core.py
 src/funbuns/utils.py
+src/funbuns/viewer.py
 src/funbuns.egg-info/PKG-INFO
 src/funbuns.egg-info/SOURCES.txt
 src/funbuns.egg-info/dependency_links.txt

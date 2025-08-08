@@ -20,7 +20,7 @@ setup(
     ],
     entry_points={
         "console_scripts": [
-            "calcpp=funbuns.__main__:main",
+            "funbuns=funbuns.__main__:main",
         ],
     },
     classifiers=[

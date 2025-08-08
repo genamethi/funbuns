@@ -2,12 +2,11 @@
 Utility functions for file handling, OS operations, and I/O.
 """
 
-import json
-import pickle
 import logging
 from datetime import datetime
 from pathlib import Path
 import polars as pl
+import tomllib
 try:
     from importlib.resources import files
 except ImportError:
@@ -27,195 +26,129 @@ def setup_logging():
 
 
 def get_default_data_file():
-    """Get the default data file path from configuration."""
-    return Path("data") / "funbuns_progress.pkl"
+    """Get the default data file path."""
+    return Path("data") / "pparts.parquet"
 
 
-def save_results(results, filename=None, resume_mode=False):
+def get_config():
+    """Get configuration from pixi.toml."""
+    try:
+        with open("pixi.toml", "rb") as f:
+            config = tomllib.load(f)
+        return config.get("tool", {}).get("funbuns", {})
+    except (FileNotFoundError, tomllib.TOMLDecodeError):
+        logging.warning("Could not load pixi.toml, using defaults")
+        return {}
+
+
+def resume_p() -> int:
     """
-    Save analysis results to pickle file.
+    Get the resume prime from existing parquet data.
+    
+    Returns:
+        Integer - next prime to process, or 2 if no data exists
+    """
+    filepath = get_default_data_file()
+    
+    if not filepath.exists():
+        logging.info("No existing data found, starting from first prime")
+        return 2
+    
+    try:
+        # Read only the last row to get max p
+        df = pl.scan_parquet(filepath).tail(1).collect()
+        
+        if df.is_empty():
+            logging.info("Parquet file is empty, starting from first prime")
+            return 2
+        
+        max_p = df.select("p").item()
+        # Find the next prime after max_p
+        from sage.all import Primes
+        P = Primes()
+        try:
+            rank = P.rank(max_p)
+            next_prime = P.unrank(rank + 1)
+        except:
+            # Fallback: just add 1 and find next prime
+            next_prime = max_p + 1
+            while not next_prime.is_prime():
+                next_prime += 1
+        
+        logging.info(f"Resuming from prime {next_prime} (max processed: {max_p})")
+        return next_prime
+        
+    except Exception as e:
+        logging.error(f"Error reading parquet file {filepath}: {e}")
+        print(f"\nError: Could not read existing data file {filepath}")
+        print("The file may be corrupted or in an invalid format.")
+        print("Please run a data check or delete the file to start fresh.")
+        raise
+
+
+def append_data(df: pl.DataFrame, buffer_size: int = None):
+    """
+    Append data to parquet file.
     
     Args:
-        results: List of analysis results
-        filename: String - output filename (optional)
-        resume_mode: Boolean - if True, use default resume file
+        df: Polars DataFrame to append
+        buffer_size: Optional buffer size for logging control
     """
-    # Determine filepath
-    data_dir = Path('data')
+    filepath = get_default_data_file()
+    data_dir = filepath.parent
     data_dir.mkdir(exist_ok=True)
     
-    if resume_mode or filename is None:
-        filepath = get_default_data_file()
-    else:
-        # Generate unique filename if needed
-        base_path = data_dir / filename
-        if base_path.exists():
-            stem = base_path.stem
-            suffix = base_path.suffix or '.pkl'
-            counter = 1
-            while base_path.exists():
-                base_path = data_dir / f"{stem}_{counter}{suffix}"
-                counter += 1
-        filepath = base_path
-    
-    # Load existing data for resume mode
-    existing_data = {}
-    if resume_mode and filepath.exists():
-        try:
-            with open(filepath, 'rb') as f:
-                existing_data = pickle.load(f)
-        except (pickle.PickleError, IOError):
-            logging.warning(f"Could not load existing data from {filepath}, starting fresh")
-    
-    # Merge or create data
-    if resume_mode and existing_data:
-        existing_results = existing_data.get('results', [])
-        # Create a set of existing primes to avoid duplicates
-        existing_primes = {r['prime'] for r in existing_results}
-        new_results = [r for r in results if r['prime'] not in existing_primes]
-        all_results = existing_results + new_results
-        
-        data_to_save = {
-            'timestamp': datetime.now().isoformat(),
-            'original_timestamp': existing_data.get('timestamp', existing_data.get('original_timestamp')),
-            'total_primes': len(all_results),
-            'results': all_results
-        }
-    else:
-        data_to_save = {
-            'timestamp': datetime.now().isoformat(),
-            'total_primes': len(results),
-            'results': results
-        }
-    
-    with open(filepath, 'wb') as f:
-        pickle.dump(data_to_save, f)
-    
-    logging.info(f"Data saved to {filepath}")
-
-
-def results_to_polars_df(results):
-    """
-    Convert results to Polars DataFrame in p,decomp_count,m,n,q format.
-    
-    Args:
-        results: List of analysis results
-        
-    Returns:
-        Polars DataFrame
-    """
-    rows = []
-    for result in results:
-        p = result['prime']
-        decomp_count = result['count']
-        
-        if decomp_count == 0:
-            # Empty decomposition: p,0,0,0,0
-            rows.append({
-                'p': int(p), 
-                'decomp_count': 0, 
-                'm': 0, 
-                'n': 0, 
-                'q': 0
-            })
-        else:
-            # Each decomposition: p,decomp_count,m,n,q
-            for m, n, q in result['decomp']:
-                rows.append({
-                    'p': int(p), 
-                    'decomp_count': decomp_count, 
-                    'm': int(m), 
-                    'n': int(n), 
-                    'q': int(q)
-                })
-    
-    return pl.DataFrame(rows)
-
-
-def load_results(filename=None):
-    """
-    Load analysis results from pickle file.
-    
-    Args:
-        filename: String - input filename (if None, uses default)
-        
-    Returns:
-        Tuple of (results_list, metadata_dict)
-    """
-    if filename is None:
-        filepath = get_default_data_file()
-    else:
-        filepath = Path('data') / filename
-    
-    with open(filepath, 'rb') as f:
-        data = pickle.load(f)
-    
-    return data['results'], {
-        'timestamp': data.get('timestamp'),
-        'original_timestamp': data.get('original_timestamp'),
-        'total_primes': data.get('total_primes', len(data['results']))
-    }
-
-
-def get_completed_primes(filename=None):
-    """
-    Get set of primes already completed from existing results.
-    
-    Args:
-        filename: String - input filename (if None, uses default)
-        
-    Returns:
-        Set of completed prime numbers
-    """
     try:
-        results, _ = load_results(filename)
-        return {r['prime'] for r in results}
-    except (FileNotFoundError, pickle.PickleError, KeyError):
-        return set()
+        if filepath.exists():
+            # Read existing data and concatenate
+            existing_df = pl.read_parquet(filepath)
+            combined_df = pl.concat([existing_df, df])
+        else:
+            combined_df = df
+        
+        # Sort by p for efficient resume operations
+        sorted_df = combined_df.sort("p")
+        
+        # Write to parquet
+        sorted_df.write_parquet(filepath)
+        
+        # Only log on first save or if it's a significant batch
+        if buffer_size is None or len(sorted_df) <= buffer_size or len(sorted_df) % (buffer_size * 10) == 0:
+            logging.info(f"Data saved to {filepath} ({len(df)} new rows, {len(sorted_df)} total rows)")
+        
+    except Exception as e:
+        logging.error(f"Error saving data to {filepath}: {e}")
+        raise
 
 
 def get_data_dir():
-    """Get or create data directory."""
-    data_dir = Path('data')
-    data_dir.mkdir(exist_ok=True)
-    return data_dir
+    """Get the data directory path."""
+    return Path('data')
 
 
 def cleanup_temp_files():
     """Clean up temporary files."""
-    temp_files = Path('.').glob('*.tmp')
-    for f in temp_files:
-        f.unlink()
-        logging.info(f"Removed temp file: {f}")
+    data_dir = get_data_dir()
+    if data_dir.exists():
+        for temp_file in data_dir.glob("*.tmp"):
+            temp_file.unlink()
 
 
 def check_disk_space(min_gb=1):
-    """
-    Check available disk space.
-    
-    Args:
-        min_gb: Minimum required space in GB
-        
-    Returns:
-        Boolean - True if sufficient space available
-    """
+    """Check available disk space."""
     import shutil
-    
-    total, used, free = shutil.disk_usage('.')
-    free_gb = free / (1024**3)
+    total, used, free = shutil.disk_usage(".")
+    free_gb = free // (1024**3)
     
     if free_gb < min_gb:
-        logging.warning(f"Low disk space: {free_gb:.2f} GB available")
+        logging.warning(f"Low disk space: {free_gb}GB available")
         return False
-    
     return True
 
 
 def get_memory_usage():
     """Get current memory usage."""
     import psutil
-    
     process = psutil.Process()
-    memory_mb = process.memory_info().rss / (1024**2)
-    
-    return memory_mb
+    memory_info = process.memory_info()
+    return memory_info.rss / 1024 / 1024  # MB
