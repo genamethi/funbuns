@@ -68,3 +68,32 @@
 2025-08-08 02:42:38,525 - INFO - Resuming from prime 23879693 (max processed: 23879677)
 2025-08-08 02:46:42,261 - INFO - Resuming from prime 32453039 (max processed: 32453027)
 2025-08-08 02:50:04,778 - INFO - Resuming from prime 41161963 (max processed: 41161949)
+2025-08-08 03:18:41,296 - INFO - Data saved to data/pparts.parquet (1 new rows, 1 total rows)
+2025-08-08 03:19:05,323 - INFO - Resuming from prime 3 (max processed: 2)
+2025-08-08 03:19:17,542 - INFO - Resuming from prime 1299743 (max processed: 1299721)
+2025-08-08 03:20:23,731 - INFO - Resuming from prime 17144513 (max processed: 17144507)
+2025-08-08 03:46:21,550 - INFO - Resuming from prime 200402023 (max processed: 200402017)
+2025-08-08 03:58:18,620 - ERROR - Error reading parquet file data/pparts.parquet: parquet: File out of specification: The file must end with PAR1
+
+This error occurred with the following context stack:
+	[1] 'parquet scan'
+	[2] 'slice'
+	[3] 'sink'
+
+2025-08-08 04:15:14,582 - INFO - No existing data found, starting from first prime
+2025-08-08 04:15:14,646 - INFO - Data saved to data/pparts.parquet (1 new rows, 1 total rows)
+2025-08-08 04:15:17,337 - INFO - Resuming from prime 3 (max processed: 2)
+2025-08-08 07:26:52,802 - INFO - Resuming from prime 121458941 (max processed: 121458937)
+2025-08-08 13:59:11,823 - INFO - Resuming from prime 178094437 (max processed: 178094401)
+2025-08-08 14:00:19,155 - INFO - Resuming from prime 179992427 (max processed: 179992387)
+2025-08-08 14:25:01,858 - INFO - Resuming from prime 276188963 (max processed: 276188947)
+2025-08-08 14:54:15,501 - INFO - Resuming from prime 297027287 (max processed: 297027277)
+2025-08-08 20:13:55,865 - INFO - Resuming from prime 395318849 (max processed: 395318837)
+2025-08-08 20:30:49,159 - INFO - Resuming from prime 435011279 (max processed: 435011267)
+2025-08-08 20:58:50,305 - INFO - Resuming from prime 494877827 (max processed: 494877797)
+2025-08-08 21:00:20,448 - INFO - Resuming from prime 495475187 (max processed: 495475181)
+2025-08-08 21:24:18,573 - INFO - Resuming from prime 496074851 (max processed: 496074823)
+2025-08-08 21:25:49,214 - INFO - Resuming from prime 497276237 (max processed: 497276233)
+2025-08-08 21:33:33,438 - INFO - Resuming from prime 498477989 (max processed: 498477979)
+2025-08-08 21:52:45,799 - INFO - Resuming from prime 510115603 (max processed: 510115601)
+2025-08-09 17:23:48,188 - INFO - Resuming from prime 519745939 (max processed: 519745861)

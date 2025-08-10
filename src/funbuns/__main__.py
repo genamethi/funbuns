@@ -9,6 +9,7 @@ from tqdm import tqdm
 from sage.all import *
 from .core import PPFeeder, PPProducer, PPConsumer
 from .utils import setup_logging, resume_p, append_data, get_config
+from .dataprep import prepare_prime_powers
 from .viewer import generate_dashboard
 
 
@@ -28,7 +29,7 @@ def worker(prime):
 
 def main():
     parser = argparse.ArgumentParser(description='Analyze prime power partitions p = 2^m + q^n')
-    parser.add_argument('-n', '--number', type=int, required=True,
+    parser.add_argument('-n', '--number', type=int, required=False,
                        help='Number of primes to analyze')
     parser.add_argument('--workers', type=int, default=None,
                        help='Number of worker processes (default: number of physical cores)')
@@ -38,6 +39,8 @@ def main():
                        help='Specify custom data file (overrides default)')
     parser.add_argument('--view', action='store_true',
                        help='Generate interactive dashboard from existing data')
+    parser.add_argument('-p', '--prep', type=int, metavar='N',
+                       help='Prepare prime powers data for first N primes (p^1 through p^100)')
     
     args = parser.parse_args()
     
@@ -45,6 +48,15 @@ def main():
     if args.view:
         generate_dashboard(args.data_file)
         return
+    
+    # Handle prep mode
+    if args.prep:
+        prepare_prime_powers(args.prep)
+        return
+    
+    # Ensure -n is provided when not in view/prep mode
+    if args.number is None:
+        parser.error("-n/--number is required when not using --view or --prep modes")
     
     # Determine number of workers
     if args.workers is not None:
@@ -92,7 +104,7 @@ def main():
     
     # Process with multiprocessing and progress bar
     with mp.Pool(cores) as pool:
-        with tqdm(total=len(work_items), desc="Prime partition analysis", unit="prime") as pbar:
+        with tqdm(total=len(work_items), desc="Prime partition", unit="prime") as pbar:
             for result_df in pool.imap(worker, work_items):
                 consumer.add_result(result_df)
                 pbar.update(1)
