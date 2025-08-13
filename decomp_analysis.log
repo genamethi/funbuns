@@ -97,3 +97,977 @@ This error occurred with the following context stack:
 2025-08-08 21:33:33,438 - INFO - Resuming from prime 498477989 (max processed: 498477979)
 2025-08-08 21:52:45,799 - INFO - Resuming from prime 510115603 (max processed: 510115601)
 2025-08-09 17:23:48,188 - INFO - Resuming from prime 519745939 (max processed: 519745861)
+2025-08-09 18:57:35,762 - INFO - Resuming from prime 519946111 (max processed: 519946019)
+2025-08-10 02:32:06,101 - INFO - Resuming from prime 527177771
+2025-08-10 03:15:13,962 - INFO - Resuming from prime 527177771
+2025-08-10 03:15:44,218 - INFO - Resuming from prime 527177771
+2025-08-10 03:16:06,158 - INFO - Resuming from prime 527177771
+2025-08-10 03:29:36,720 - INFO - Resuming from prime 527177771 (start_idx: 27710001)
+2025-08-10 03:32:34,677 - INFO - Resuming from prime 527177771 (start_idx: 27710001)
+2025-08-10 03:37:59,117 - INFO - Resuming from prime 527177771 (start_idx: 27710001)
+2025-08-10 03:39:37,853 - INFO - Resuming from prime 527177771 (start_idx: 27710001)
+2025-08-10 04:27:45,980 - INFO - Resuming from prime 527177771 (start_idx: 27710001)
+2025-08-10 22:04:45,775 - INFO - Data written to incremental file: pparts_temp_20250810_220441_inc_20250810_220445_771.parquet
+2025-08-10 22:04:45,776 - INFO - Batch size: 252377 rows
+2025-08-10 22:04:48,658 - INFO - Data written to incremental file: pparts_temp_20250810_220441_inc_20250810_220448_655.parquet
+2025-08-10 22:04:48,658 - INFO - Batch size: 325261 rows
+2025-08-10 22:04:51,537 - INFO - Data written to incremental file: pparts_temp_20250810_220441_inc_20250810_220451_533.parquet
+2025-08-10 22:04:51,537 - INFO - Batch size: 350161 rows
+2025-08-10 22:04:54,418 - INFO - Data written to incremental file: pparts_temp_20250810_220441_inc_20250810_220454_415.parquet
+2025-08-10 22:04:54,418 - INFO - Batch size: 361496 rows
+2025-08-10 22:04:57,323 - INFO - Data written to incremental file: pparts_temp_20250810_220441_inc_20250810_220457_320.parquet
+2025-08-10 22:04:57,323 - INFO - Batch size: 375138 rows
+2025-08-10 22:05:00,234 - INFO - Data written to incremental file: pparts_temp_20250810_220441_inc_20250810_220500_231.parquet
+2025-08-10 22:05:00,234 - INFO - Batch size: 375141 rows
+2025-08-10 22:05:03,162 - INFO - Data written to incremental file: pparts_temp_20250810_220441_inc_20250810_220503_159.parquet
+2025-08-10 22:05:03,162 - INFO - Batch size: 385727 rows
+2025-08-10 22:05:06,064 - INFO - Data written to incremental file: pparts_temp_20250810_220441_inc_20250810_220506_061.parquet
+2025-08-10 22:05:06,064 - INFO - Batch size: 400139 rows
+2025-08-10 22:05:08,984 - INFO - Data written to incremental file: pparts_temp_20250810_220441_inc_20250810_220508_981.parquet
+2025-08-10 22:05:08,984 - INFO - Batch size: 400124 rows
+2025-08-10 22:05:11,914 - INFO - Data written to incremental file: pparts_temp_20250810_220441_inc_20250810_220511_911.parquet
+2025-08-10 22:05:11,914 - INFO - Batch size: 400142 rows
+2025-08-10 22:05:12,028 - INFO - Merging 10 incremental files for pparts_temp_20250810_220441.parquet...
+2025-08-10 22:05:12,130 - INFO - Merge complete: 3625706 total rows (3625706 new)
+2025-08-10 22:05:12,130 - INFO - Final file: data/pparts_temp_20250810_220441.parquet
+2025-08-10 22:16:33,601 - INFO - Resuming from prime 530709623 (start_idx: 27886001)
+2025-08-10 22:16:44,690 - INFO - Resuming from prime 530709623 (start_idx: 27886001)
+2025-08-10 22:16:46,166 - INFO - Data written to incremental file: pparts_inc_20250810_221646_163.parquet
+2025-08-10 22:16:46,166 - INFO - Batch size: 70008 rows
+2025-08-10 22:16:46,504 - INFO - Data written to incremental file: pparts_inc_20250810_221646_502.parquet
+2025-08-10 22:16:46,504 - INFO - Batch size: 70007 rows
+2025-08-10 22:16:46,841 - INFO - Data written to incremental file: pparts_inc_20250810_221646_839.parquet
+2025-08-10 22:16:46,841 - INFO - Batch size: 70008 rows
+2025-08-10 22:16:47,174 - INFO - Data written to incremental file: pparts_inc_20250810_221647_172.parquet
+2025-08-10 22:16:47,174 - INFO - Batch size: 70009 rows
+2025-08-10 22:16:47,515 - INFO - Data written to incremental file: pparts_inc_20250810_221647_513.parquet
+2025-08-10 22:16:47,515 - INFO - Batch size: 70006 rows
+2025-08-10 22:16:47,851 - INFO - Data written to incremental file: pparts_inc_20250810_221647_850.parquet
+2025-08-10 22:16:47,851 - INFO - Batch size: 70008 rows
+2025-08-10 22:16:48,189 - INFO - Data written to incremental file: pparts_inc_20250810_221648_188.parquet
+2025-08-10 22:16:48,189 - INFO - Batch size: 70008 rows
+2025-08-10 22:16:48,523 - INFO - Data written to incremental file: pparts_inc_20250810_221648_521.parquet
+2025-08-10 22:16:48,523 - INFO - Batch size: 70003 rows
+2025-08-10 22:16:48,860 - INFO - Data written to incremental file: pparts_inc_20250810_221648_859.parquet
+2025-08-10 22:16:48,860 - INFO - Batch size: 70006 rows
+2025-08-10 22:16:49,195 - INFO - Data written to incremental file: pparts_inc_20250810_221649_193.parquet
+2025-08-10 22:16:49,195 - INFO - Batch size: 70004 rows
+2025-08-10 22:16:49,247 - INFO - Merging 10 incremental files for pparts.parquet...
+2025-08-10 22:16:49,555 - INFO - Created backup: data/pparts.backup.parquet
+2025-08-10 22:16:50,014 - INFO - Existing data: 56968414 rows
+2025-08-10 22:16:55,743 - INFO - Merge complete: 57668481 total rows (700067 new)
+2025-08-10 22:16:55,743 - INFO - Final file: data/pparts.parquet
+2025-08-10 22:16:55,747 - INFO - Timing data saved to data/timing_debug_20250810_221655.parquet
+2025-08-10 22:16:55,747 - INFO - Timing stats saved to data/timing_debug_20250810_221655.txt
+2025-08-10 22:25:25,034 - INFO - Data written to incremental file: pparts_temp_20250810_222523_inc_20250810_222525_032.parquet
+2025-08-10 22:25:25,034 - INFO - Batch size: 26751 rows
+2025-08-10 22:25:25,350 - INFO - Data written to incremental file: pparts_temp_20250810_222523_inc_20250810_222525_349.parquet
+2025-08-10 22:25:25,350 - INFO - Batch size: 24339 rows
+2025-08-10 22:25:25,675 - INFO - Data written to incremental file: pparts_temp_20250810_222523_inc_20250810_222525_674.parquet
+2025-08-10 22:25:25,675 - INFO - Batch size: 26294 rows
+2025-08-10 22:25:25,991 - INFO - Data written to incremental file: pparts_temp_20250810_222523_inc_20250810_222525_991.parquet
+2025-08-10 22:25:25,991 - INFO - Batch size: 27463 rows
+2025-08-10 22:25:26,311 - INFO - Data written to incremental file: pparts_temp_20250810_222523_inc_20250810_222526_310.parquet
+2025-08-10 22:25:26,311 - INFO - Batch size: 27832 rows
+2025-08-10 22:25:26,636 - INFO - Data written to incremental file: pparts_temp_20250810_222523_inc_20250810_222526_635.parquet
+2025-08-10 22:25:26,636 - INFO - Batch size: 29645 rows
+2025-08-10 22:25:26,953 - INFO - Data written to incremental file: pparts_temp_20250810_222523_inc_20250810_222526_952.parquet
+2025-08-10 22:25:26,953 - INFO - Batch size: 30021 rows
+2025-08-10 22:25:27,274 - INFO - Data written to incremental file: pparts_temp_20250810_222523_inc_20250810_222527_273.parquet
+2025-08-10 22:25:27,274 - INFO - Batch size: 30017 rows
+2025-08-10 22:25:27,593 - INFO - Data written to incremental file: pparts_temp_20250810_222523_inc_20250810_222527_592.parquet
+2025-08-10 22:25:27,593 - INFO - Batch size: 30015 rows
+2025-08-10 22:25:27,646 - INFO - Merging 9 incremental files for pparts_temp_20250810_222523.parquet...
+2025-08-10 22:25:27,673 - INFO - Merge complete: 252377 total rows (252377 new)
+2025-08-10 22:25:27,673 - INFO - Final file: data/pparts_temp_20250810_222523.parquet
+2025-08-10 22:25:27,678 - INFO - Timing data saved to data/timing_debug_20250810_222527.parquet
+2025-08-10 22:25:27,678 - INFO - Timing stats saved to data/timing_debug_20250810_222527.txt
+2025-08-10 22:29:23,510 - INFO - Data written to incremental file: pparts_temp_20250810_222922_inc_20250810_222923_508.parquet
+2025-08-10 22:29:23,510 - INFO - Batch size: 1000 rows
+2025-08-10 22:29:23,511 - INFO - Merging 1 incremental files for pparts_temp_20250810_222922.parquet...
+2025-08-10 22:29:23,526 - INFO - Merge complete: 1000 total rows (1000 new)
+2025-08-10 22:29:23,526 - INFO - Final file: data/pparts_temp_20250810_222922.parquet
+2025-08-10 22:29:23,530 - INFO - Timing data saved to data/timing_debug_20250810_222923.parquet
+2025-08-10 22:29:23,530 - INFO - Timing stats saved to data/timing_debug_20250810_222923.txt
+2025-08-10 22:33:41,608 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223341_606.parquet
+2025-08-10 22:33:41,608 - INFO - Batch size: 26751 rows
+2025-08-10 22:33:41,922 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223341_922.parquet
+2025-08-10 22:33:41,922 - INFO - Batch size: 24339 rows
+2025-08-10 22:33:42,251 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223342_251.parquet
+2025-08-10 22:33:42,252 - INFO - Batch size: 26294 rows
+2025-08-10 22:33:42,568 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223342_568.parquet
+2025-08-10 22:33:42,568 - INFO - Batch size: 27463 rows
+2025-08-10 22:33:42,886 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223342_885.parquet
+2025-08-10 22:33:42,886 - INFO - Batch size: 27832 rows
+2025-08-10 22:33:43,209 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223343_208.parquet
+2025-08-10 22:33:43,209 - INFO - Batch size: 29645 rows
+2025-08-10 22:33:43,534 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223343_533.parquet
+2025-08-10 22:33:43,534 - INFO - Batch size: 30021 rows
+2025-08-10 22:33:43,856 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223343_855.parquet
+2025-08-10 22:33:43,856 - INFO - Batch size: 30017 rows
+2025-08-10 22:33:44,174 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223344_173.parquet
+2025-08-10 22:33:44,174 - INFO - Batch size: 30015 rows
+2025-08-10 22:33:44,500 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223344_499.parquet
+2025-08-10 22:33:44,500 - INFO - Batch size: 30989 rows
+2025-08-10 22:33:44,827 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223344_826.parquet
+2025-08-10 22:33:44,828 - INFO - Batch size: 32442 rows
+2025-08-10 22:33:45,126 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223345_125.parquet
+2025-08-10 22:33:45,126 - INFO - Batch size: 32520 rows
+2025-08-10 22:33:45,427 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223345_426.parquet
+2025-08-10 22:33:45,427 - INFO - Batch size: 32516 rows
+2025-08-10 22:33:45,722 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223345_722.parquet
+2025-08-10 22:33:45,722 - INFO - Batch size: 32516 rows
+2025-08-10 22:33:46,024 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223346_024.parquet
+2025-08-10 22:33:46,024 - INFO - Batch size: 32514 rows
+2025-08-10 22:33:46,326 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223346_325.parquet
+2025-08-10 22:33:46,326 - INFO - Batch size: 32521 rows
+2025-08-10 22:33:46,626 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223346_625.parquet
+2025-08-10 22:33:46,626 - INFO - Batch size: 32513 rows
+2025-08-10 22:33:46,955 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223346_955.parquet
+2025-08-10 22:33:46,955 - INFO - Batch size: 32516 rows
+2025-08-10 22:33:47,258 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223347_257.parquet
+2025-08-10 22:33:47,258 - INFO - Batch size: 34214 rows
+2025-08-10 22:33:47,556 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223347_555.parquet
+2025-08-10 22:33:47,556 - INFO - Batch size: 35017 rows
+2025-08-10 22:33:47,855 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223347_854.parquet
+2025-08-10 22:33:47,855 - INFO - Batch size: 35015 rows
+2025-08-10 22:33:48,153 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223348_152.parquet
+2025-08-10 22:33:48,153 - INFO - Batch size: 35018 rows
+2025-08-10 22:33:48,447 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223348_446.parquet
+2025-08-10 22:33:48,447 - INFO - Batch size: 35019 rows
+2025-08-10 22:33:48,748 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223348_748.parquet
+2025-08-10 22:33:48,748 - INFO - Batch size: 35016 rows
+2025-08-10 22:33:49,040 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223349_040.parquet
+2025-08-10 22:33:49,040 - INFO - Batch size: 35016 rows
+2025-08-10 22:33:49,339 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223349_339.parquet
+2025-08-10 22:33:49,339 - INFO - Batch size: 35014 rows
+2025-08-10 22:33:49,638 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223349_637.parquet
+2025-08-10 22:33:49,638 - INFO - Batch size: 35018 rows
+2025-08-10 22:33:49,938 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223349_938.parquet
+2025-08-10 22:33:49,938 - INFO - Batch size: 35014 rows
+2025-08-10 22:33:50,235 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223350_234.parquet
+2025-08-10 22:33:50,235 - INFO - Batch size: 35014 rows
+2025-08-10 22:33:50,535 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223350_534.parquet
+2025-08-10 22:33:50,535 - INFO - Batch size: 35012 rows
+2025-08-10 22:33:50,834 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223350_834.parquet
+2025-08-10 22:33:50,834 - INFO - Batch size: 35016 rows
+2025-08-10 22:33:51,132 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223351_131.parquet
+2025-08-10 22:33:51,132 - INFO - Batch size: 35013 rows
+2025-08-10 22:33:51,431 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223351_430.parquet
+2025-08-10 22:33:51,431 - INFO - Batch size: 35016 rows
+2025-08-10 22:33:51,730 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223351_730.parquet
+2025-08-10 22:33:51,730 - INFO - Batch size: 35013 rows
+2025-08-10 22:33:52,029 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223352_029.parquet
+2025-08-10 22:33:52,030 - INFO - Batch size: 36366 rows
+2025-08-10 22:33:52,327 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223352_326.parquet
+2025-08-10 22:33:52,327 - INFO - Batch size: 37509 rows
+2025-08-10 22:33:52,619 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223352_618.parquet
+2025-08-10 22:33:52,619 - INFO - Batch size: 37518 rows
+2025-08-10 22:33:52,915 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223352_914.parquet
+2025-08-10 22:33:52,915 - INFO - Batch size: 37514 rows
+2025-08-10 22:33:53,209 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223353_208.parquet
+2025-08-10 22:33:53,209 - INFO - Batch size: 37519 rows
+2025-08-10 22:33:53,508 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223353_507.parquet
+2025-08-10 22:33:53,508 - INFO - Batch size: 37516 rows
+2025-08-10 22:33:53,802 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223353_801.parquet
+2025-08-10 22:33:53,802 - INFO - Batch size: 37514 rows
+2025-08-10 22:33:54,100 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223354_099.parquet
+2025-08-10 22:33:54,100 - INFO - Batch size: 37513 rows
+2025-08-10 22:33:54,398 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223354_398.parquet
+2025-08-10 22:33:54,398 - INFO - Batch size: 37512 rows
+2025-08-10 22:33:54,696 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223354_696.parquet
+2025-08-10 22:33:54,696 - INFO - Batch size: 37517 rows
+2025-08-10 22:33:54,989 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223354_989.parquet
+2025-08-10 22:33:54,989 - INFO - Batch size: 37511 rows
+2025-08-10 22:33:55,285 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223355_284.parquet
+2025-08-10 22:33:55,285 - INFO - Batch size: 37514 rows
+2025-08-10 22:33:55,586 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223355_585.parquet
+2025-08-10 22:33:55,586 - INFO - Batch size: 37515 rows
+2025-08-10 22:33:55,882 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223355_881.parquet
+2025-08-10 22:33:55,882 - INFO - Batch size: 37515 rows
+2025-08-10 22:33:56,178 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223356_177.parquet
+2025-08-10 22:33:56,178 - INFO - Batch size: 37511 rows
+2025-08-10 22:33:56,476 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223356_476.parquet
+2025-08-10 22:33:56,476 - INFO - Batch size: 37516 rows
+2025-08-10 22:33:56,772 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223356_771.parquet
+2025-08-10 22:33:56,772 - INFO - Batch size: 37518 rows
+2025-08-10 22:33:57,070 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223357_069.parquet
+2025-08-10 22:33:57,070 - INFO - Batch size: 37516 rows
+2025-08-10 22:33:57,365 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223357_365.parquet
+2025-08-10 22:33:57,366 - INFO - Batch size: 37513 rows
+2025-08-10 22:33:57,663 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223357_662.parquet
+2025-08-10 22:33:57,663 - INFO - Batch size: 37513 rows
+2025-08-10 22:33:57,962 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223357_962.parquet
+2025-08-10 22:33:57,962 - INFO - Batch size: 37512 rows
+2025-08-10 22:33:58,258 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223358_257.parquet
+2025-08-10 22:33:58,258 - INFO - Batch size: 37515 rows
+2025-08-10 22:33:58,552 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223358_551.parquet
+2025-08-10 22:33:58,552 - INFO - Batch size: 37510 rows
+2025-08-10 22:33:58,847 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223358_847.parquet
+2025-08-10 22:33:58,847 - INFO - Batch size: 37508 rows
+2025-08-10 22:33:59,143 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223359_142.parquet
+2025-08-10 22:33:59,143 - INFO - Batch size: 37520 rows
+2025-08-10 22:33:59,441 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223359_440.parquet
+2025-08-10 22:33:59,441 - INFO - Batch size: 37510 rows
+2025-08-10 22:33:59,735 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223359_734.parquet
+2025-08-10 22:33:59,735 - INFO - Batch size: 37512 rows
+2025-08-10 22:34:00,030 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223400_030.parquet
+2025-08-10 22:34:00,030 - INFO - Batch size: 37508 rows
+2025-08-10 22:34:00,360 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223400_360.parquet
+2025-08-10 22:34:00,360 - INFO - Batch size: 37513 rows
+2025-08-10 22:34:00,657 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223400_656.parquet
+2025-08-10 22:34:00,657 - INFO - Batch size: 37510 rows
+2025-08-10 22:34:00,951 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223400_950.parquet
+2025-08-10 22:34:00,951 - INFO - Batch size: 38181 rows
+2025-08-10 22:34:01,257 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223401_257.parquet
+2025-08-10 22:34:01,257 - INFO - Batch size: 39945 rows
+2025-08-10 22:34:01,560 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223401_559.parquet
+2025-08-10 22:34:01,560 - INFO - Batch size: 40014 rows
+2025-08-10 22:34:01,855 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223401_854.parquet
+2025-08-10 22:34:01,855 - INFO - Batch size: 40017 rows
+2025-08-10 22:34:02,153 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223402_152.parquet
+2025-08-10 22:34:02,153 - INFO - Batch size: 40017 rows
+2025-08-10 22:34:02,451 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223402_450.parquet
+2025-08-10 22:34:02,451 - INFO - Batch size: 40009 rows
+2025-08-10 22:34:02,742 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223402_741.parquet
+2025-08-10 22:34:02,742 - INFO - Batch size: 40014 rows
+2025-08-10 22:34:03,037 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223403_036.parquet
+2025-08-10 22:34:03,037 - INFO - Batch size: 40016 rows
+2025-08-10 22:34:03,332 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223403_331.parquet
+2025-08-10 22:34:03,332 - INFO - Batch size: 40010 rows
+2025-08-10 22:34:03,627 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223403_627.parquet
+2025-08-10 22:34:03,628 - INFO - Batch size: 40015 rows
+2025-08-10 22:34:03,926 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223403_926.parquet
+2025-08-10 22:34:03,926 - INFO - Batch size: 40018 rows
+2025-08-10 22:34:04,250 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223404_249.parquet
+2025-08-10 22:34:04,250 - INFO - Batch size: 40014 rows
+2025-08-10 22:34:04,547 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223404_547.parquet
+2025-08-10 22:34:04,547 - INFO - Batch size: 40012 rows
+2025-08-10 22:34:04,848 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223404_848.parquet
+2025-08-10 22:34:04,849 - INFO - Batch size: 40014 rows
+2025-08-10 22:34:05,144 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223405_143.parquet
+2025-08-10 22:34:05,144 - INFO - Batch size: 40017 rows
+2025-08-10 22:34:05,441 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223405_440.parquet
+2025-08-10 22:34:05,441 - INFO - Batch size: 40013 rows
+2025-08-10 22:34:05,734 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223405_734.parquet
+2025-08-10 22:34:05,734 - INFO - Batch size: 40022 rows
+2025-08-10 22:34:06,035 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223406_034.parquet
+2025-08-10 22:34:06,035 - INFO - Batch size: 40010 rows
+2025-08-10 22:34:06,331 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223406_330.parquet
+2025-08-10 22:34:06,331 - INFO - Batch size: 40007 rows
+2025-08-10 22:34:06,630 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223406_630.parquet
+2025-08-10 22:34:06,631 - INFO - Batch size: 40013 rows
+2025-08-10 22:34:06,925 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223406_924.parquet
+2025-08-10 22:34:06,925 - INFO - Batch size: 40015 rows
+2025-08-10 22:34:07,220 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223407_220.parquet
+2025-08-10 22:34:07,220 - INFO - Batch size: 40013 rows
+2025-08-10 22:34:07,512 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223407_512.parquet
+2025-08-10 22:34:07,512 - INFO - Batch size: 40007 rows
+2025-08-10 22:34:07,813 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223407_812.parquet
+2025-08-10 22:34:07,813 - INFO - Batch size: 40011 rows
+2025-08-10 22:34:08,108 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223408_107.parquet
+2025-08-10 22:34:08,108 - INFO - Batch size: 40013 rows
+2025-08-10 22:34:08,408 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223408_407.parquet
+2025-08-10 22:34:08,408 - INFO - Batch size: 40017 rows
+2025-08-10 22:34:08,701 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223408_701.parquet
+2025-08-10 22:34:08,702 - INFO - Batch size: 40014 rows
+2025-08-10 22:34:08,996 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223408_995.parquet
+2025-08-10 22:34:08,996 - INFO - Batch size: 40015 rows
+2025-08-10 22:34:09,290 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223409_289.parquet
+2025-08-10 22:34:09,290 - INFO - Batch size: 40009 rows
+2025-08-10 22:34:09,588 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223409_587.parquet
+2025-08-10 22:34:09,588 - INFO - Batch size: 40014 rows
+2025-08-10 22:34:09,884 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223409_884.parquet
+2025-08-10 22:34:09,884 - INFO - Batch size: 40018 rows
+2025-08-10 22:34:10,180 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223410_179.parquet
+2025-08-10 22:34:10,180 - INFO - Batch size: 40013 rows
+2025-08-10 22:34:10,480 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223410_479.parquet
+2025-08-10 22:34:10,480 - INFO - Batch size: 40013 rows
+2025-08-10 22:34:10,776 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223410_775.parquet
+2025-08-10 22:34:10,776 - INFO - Batch size: 40013 rows
+2025-08-10 22:34:11,076 - INFO - Data written to incremental file: pparts_temp_20250810_223340_inc_20250810_223411_075.parquet
+2025-08-10 22:34:11,076 - INFO - Batch size: 40016 rows
+2025-08-10 22:34:11,132 - INFO - Merging 99 incremental files for pparts_temp_20250810_223340.parquet...
+2025-08-10 22:34:11,297 - INFO - Merge complete: 3625706 total rows (3625706 new)
+2025-08-10 22:34:11,297 - INFO - Final file: data/pparts_temp_20250810_223340.parquet
+2025-08-10 22:34:11,330 - INFO - Timing data saved to data/timing_debug_20250810_223411.parquet
+2025-08-10 22:34:11,330 - INFO - Timing stats saved to data/timing_debug_20250810_223411.txt
+2025-08-10 22:34:28,915 - INFO - Data written to incremental file: pparts_temp_20250810_223425_inc_20250810_223428_913.parquet
+2025-08-10 22:34:28,915 - INFO - Batch size: 10000 rows
+2025-08-10 22:34:28,964 - INFO - Merging 1 incremental files for pparts_temp_20250810_223425.parquet...
+2025-08-10 22:34:28,979 - INFO - Merge complete: 10000 total rows (10000 new)
+2025-08-10 22:34:28,979 - INFO - Final file: data/pparts_temp_20250810_223425.parquet
+2025-08-10 22:34:29,001 - INFO - Timing data saved to data/timing_debug_20250810_223428.parquet
+2025-08-10 22:34:29,001 - INFO - Timing stats saved to data/timing_debug_20250810_223428.txt
+2025-08-11 00:15:37,044 - INFO - Data written to incremental file: pparts_temp_20250811_001535_inc_20250811_001537_043.parquet
+2025-08-11 00:15:37,044 - INFO - Batch size: 100 rows
+2025-08-11 00:15:37,044 - INFO - Merging 1 incremental files for pparts_temp_20250811_001535.parquet...
+2025-08-11 00:15:37,049 - INFO - Merge complete: 100 total rows (100 new)
+2025-08-11 00:15:37,049 - INFO - Final file: data/pparts_temp_20250811_001535.parquet
+2025-08-11 00:15:37,052 - INFO - Timing data saved to data/timing_debug_20250811_001537.parquet
+2025-08-11 00:15:37,052 - INFO - Timing stats saved to data/timing_debug_20250811_001537.txt
+2025-08-11 00:16:00,161 - INFO - Data written to incremental file: pparts_temp_20250811_001559_inc_20250811_001600_160.parquet
+2025-08-11 00:16:00,162 - INFO - Batch size: 100 rows
+2025-08-11 00:16:00,162 - INFO - Merging 1 incremental files for pparts_temp_20250811_001559.parquet...
+2025-08-11 00:16:00,168 - INFO - Merge complete: 100 total rows (100 new)
+2025-08-11 00:16:00,168 - INFO - Final file: data/pparts_temp_20250811_001559.parquet
+2025-08-11 00:16:00,171 - INFO - Timing data saved to data/timing_debug_20250811_001600.parquet
+2025-08-11 00:16:00,171 - INFO - Timing stats saved to data/timing_debug_20250811_001600.txt
+2025-08-11 00:16:21,086 - INFO - Data written to incremental file: pparts_temp_20250811_001619_inc_20250811_001621_085.parquet
+2025-08-11 00:16:21,086 - INFO - Batch size: 1000 rows
+2025-08-11 00:16:21,086 - INFO - Merging 1 incremental files for pparts_temp_20250811_001619.parquet...
+2025-08-11 00:16:21,099 - INFO - Merge complete: 1000 total rows (1000 new)
+2025-08-11 00:16:21,099 - INFO - Final file: data/pparts_temp_20250811_001619.parquet
+2025-08-11 00:16:21,104 - INFO - Timing data saved to data/timing_debug_20250811_001621.parquet
+2025-08-11 00:16:21,104 - INFO - Timing stats saved to data/timing_debug_20250811_001621.txt
+2025-08-11 00:18:08,118 - INFO - Data written to incremental file: pparts_temp_20250811_001807_inc_20250811_001808_117.parquet
+2025-08-11 00:18:08,119 - INFO - Batch size: 45 rows
+2025-08-11 00:18:08,119 - INFO - Merging 1 incremental files for pparts_temp_20250811_001807.parquet...
+2025-08-11 00:18:08,125 - INFO - Merge complete: 45 total rows (45 new)
+2025-08-11 00:18:08,125 - INFO - Final file: data/pparts_temp_20250811_001807.parquet
+2025-08-11 00:18:08,128 - INFO - Timing data saved to data/timing_debug_20250811_001808.parquet
+2025-08-11 00:18:08,129 - INFO - Timing stats saved to data/timing_debug_20250811_001808.txt
+2025-08-11 00:18:53,506 - INFO - Merging 1 incremental files for pparts_temp_20250811_001852.parquet...
+2025-08-11 00:18:53,521 - INFO - Merge complete: 7339 total rows (7339 new)
+2025-08-11 00:18:53,521 - INFO - Final file: data/pparts_temp_20250811_001852.parquet
+2025-08-11 00:19:37,437 - INFO - Merging 1 incremental files for pparts_temp_20250811_001936.parquet...
+2025-08-11 00:19:37,445 - INFO - Merge complete: 7339 total rows (7339 new)
+2025-08-11 00:19:37,445 - INFO - Final file: data/pparts_temp_20250811_001936.parquet
+2025-08-11 00:20:06,821 - INFO - Merging 1 incremental files for pparts_temp_20250811_002005.parquet...
+2025-08-11 00:20:06,844 - INFO - Merge complete: 217 total rows (217 new)
+2025-08-11 00:20:06,844 - INFO - Final file: data/pparts_temp_20250811_002005.parquet
+2025-08-11 00:24:46,706 - INFO - Merging 1 incremental files for pparts_temp_20250811_002445.parquet...
+2025-08-11 00:24:46,711 - INFO - Merge complete: 217 total rows (217 new)
+2025-08-11 00:24:46,711 - INFO - Final file: data/pparts_temp_20250811_002445.parquet
+2025-08-11 00:24:46,711 - INFO - Merging 20 incremental files for pparts_temp_20250811_002316.parquet...
+2025-08-11 00:24:46,937 - INFO - Merge complete: 7854564 total rows (7854564 new)
+2025-08-11 00:24:46,937 - INFO - Final file: data/pparts_temp_20250811_002316.parquet
+2025-08-11 00:25:15,526 - INFO - Data written to incremental file: pparts_temp_20250811_002514_inc_20250811_002515_525.parquet
+2025-08-11 00:25:15,527 - INFO - Batch size: 117 rows
+2025-08-11 00:25:15,527 - INFO - Merging 1 incremental files for pparts_temp_20250811_002514.parquet...
+2025-08-11 00:25:15,532 - INFO - Merge complete: 117 total rows (117 new)
+2025-08-11 00:25:15,532 - INFO - Final file: data/pparts_temp_20250811_002514.parquet
+2025-08-11 00:25:15,535 - INFO - Timing data saved to data/timing_debug_20250811_002515.parquet
+2025-08-11 00:25:15,535 - INFO - Timing stats saved to data/timing_debug_20250811_002515.txt
+2025-08-11 00:26:42,098 - INFO - Data written to incremental file: pparts_temp_20250811_002638_inc_20250811_002642_093.parquet
+2025-08-11 00:26:42,098 - INFO - Batch size: 253942 rows
+2025-08-11 00:26:44,934 - INFO - Data written to incremental file: pparts_temp_20250811_002638_inc_20250811_002644_931.parquet
+2025-08-11 00:26:44,934 - INFO - Batch size: 326953 rows
+2025-08-11 00:26:47,789 - INFO - Data written to incremental file: pparts_temp_20250811_002638_inc_20250811_002647_786.parquet
+2025-08-11 00:26:47,789 - INFO - Batch size: 351882 rows
+2025-08-11 00:26:50,641 - INFO - Data written to incremental file: pparts_temp_20250811_002638_inc_20250811_002650_638.parquet
+2025-08-11 00:26:50,641 - INFO - Batch size: 363211 rows
+2025-08-11 00:26:53,489 - INFO - Data written to incremental file: pparts_temp_20250811_002638_inc_20250811_002653_486.parquet
+2025-08-11 00:26:53,489 - INFO - Batch size: 376860 rows
+2025-08-11 00:26:56,343 - INFO - Data written to incremental file: pparts_temp_20250811_002638_inc_20250811_002656_341.parquet
+2025-08-11 00:26:56,344 - INFO - Batch size: 376890 rows
+2025-08-11 00:26:59,231 - INFO - Data written to incremental file: pparts_temp_20250811_002638_inc_20250811_002659_226.parquet
+2025-08-11 00:26:59,231 - INFO - Batch size: 387415 rows
+2025-08-11 00:27:02,145 - INFO - Data written to incremental file: pparts_temp_20250811_002638_inc_20250811_002702_140.parquet
+2025-08-11 00:27:02,145 - INFO - Batch size: 401914 rows
+2025-08-11 00:27:05,058 - INFO - Data written to incremental file: pparts_temp_20250811_002638_inc_20250811_002705_053.parquet
+2025-08-11 00:27:05,058 - INFO - Batch size: 401905 rows
+2025-08-11 00:27:07,936 - INFO - Data written to incremental file: pparts_temp_20250811_002638_inc_20250811_002707_931.parquet
+2025-08-11 00:27:07,936 - INFO - Batch size: 401877 rows
+2025-08-11 00:27:07,992 - INFO - Merging 10 incremental files for pparts_temp_20250811_002638.parquet...
+2025-08-11 00:27:08,099 - INFO - Merge complete: 3642849 total rows (3642849 new)
+2025-08-11 00:27:08,099 - INFO - Final file: data/pparts_temp_20250811_002638.parquet
+2025-08-11 00:27:08,130 - INFO - Timing data saved to data/timing_debug_20250811_002708.parquet
+2025-08-11 00:27:08,130 - INFO - Timing stats saved to data/timing_debug_20250811_002708.txt
+2025-08-11 00:35:15,267 - INFO - Data written to incremental file: pparts_temp_20250811_003513_inc_20250811_003515_265.parquet
+2025-08-11 00:35:15,267 - INFO - Batch size: 117 rows
+2025-08-11 00:35:15,267 - INFO - Merging 1 incremental files for pparts_temp_20250811_003513.parquet...
+2025-08-11 00:35:15,281 - INFO - Merge complete: 117 total rows (117 new)
+2025-08-11 00:35:15,281 - INFO - Final file: data/pparts_temp_20250811_003513.parquet
+2025-08-11 00:35:15,283 - INFO - Timing data saved to data/timing_debug_20250811_003515.parquet
+2025-08-11 00:35:15,283 - INFO - Timing stats saved to data/timing_debug_20250811_003515.txt
+2025-08-11 00:35:34,731 - INFO - Merging 1 incremental files for pparts_temp_20250811_003530.parquet...
+2025-08-11 00:35:34,745 - INFO - Merge complete: 2029 total rows (2029 new)
+2025-08-11 00:35:34,745 - INFO - Final file: data/pparts_temp_20250811_003530.parquet
+2025-08-11 00:40:46,628 - INFO - Data written to incremental file: pparts_temp_20250811_004045_inc_20250811_004046_627.parquet
+2025-08-11 00:40:46,628 - INFO - Batch size: 215 rows
+2025-08-11 00:40:46,628 - INFO - Merging 1 incremental files for pparts_temp_20250811_004045.parquet...
+2025-08-11 00:40:46,634 - INFO - Merge complete: 215 total rows (215 new)
+2025-08-11 00:40:46,635 - INFO - Final file: data/pparts_temp_20250811_004045.parquet
+2025-08-11 00:40:46,638 - INFO - Timing data saved to data/timing_debug_20250811_004046.parquet
+2025-08-11 00:40:46,638 - INFO - Timing stats saved to data/timing_debug_20250811_004046.txt
+2025-08-11 00:45:26,613 - INFO - Merging 1 incremental files for pparts_temp_20250811_004525.parquet...
+2025-08-11 00:45:26,626 - INFO - Merge complete: 45 total rows (45 new)
+2025-08-11 00:45:26,626 - INFO - Final file: data/pparts_temp_20250811_004525.parquet
+2025-08-11 00:46:38,051 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004638_049.parquet
+2025-08-11 00:46:38,051 - INFO - Batch size: 10076 rows
+2025-08-11 00:46:53,851 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004653_849.parquet
+2025-08-11 00:46:53,851 - INFO - Batch size: 10111 rows
+2025-08-11 00:47:09,515 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004709_513.parquet
+2025-08-11 00:47:09,515 - INFO - Batch size: 10079 rows
+2025-08-11 00:47:25,096 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004725_094.parquet
+2025-08-11 00:47:25,096 - INFO - Batch size: 10008 rows
+2025-08-11 00:47:40,750 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004740_748.parquet
+2025-08-11 00:47:40,750 - INFO - Batch size: 10142 rows
+2025-08-11 00:47:56,530 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004756_529.parquet
+2025-08-11 00:47:56,530 - INFO - Batch size: 10407 rows
+2025-08-11 00:48:12,133 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004812_131.parquet
+2025-08-11 00:48:12,133 - INFO - Batch size: 10112 rows
+2025-08-11 00:48:31,006 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004831_005.parquet
+2025-08-11 00:48:31,006 - INFO - Batch size: 11885 rows
+2025-08-11 00:48:46,715 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004846_713.parquet
+2025-08-11 00:48:46,715 - INFO - Batch size: 10163 rows
+2025-08-11 00:49:02,461 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004902_459.parquet
+2025-08-11 00:49:02,461 - INFO - Batch size: 10369 rows
+2025-08-11 00:49:18,264 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004918_263.parquet
+2025-08-11 00:49:18,264 - INFO - Batch size: 10130 rows
+2025-08-11 00:49:34,112 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004934_110.parquet
+2025-08-11 00:49:34,112 - INFO - Batch size: 10164 rows
+2025-08-11 00:49:50,238 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_004950_236.parquet
+2025-08-11 00:49:50,238 - INFO - Batch size: 10040 rows
+2025-08-11 00:50:10,031 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_005010_029.parquet
+2025-08-11 00:50:10,031 - INFO - Batch size: 11947 rows
+2025-08-11 00:50:30,124 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_005030_122.parquet
+2025-08-11 00:50:30,124 - INFO - Batch size: 11959 rows
+2025-08-11 00:50:49,119 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_005049_118.parquet
+2025-08-11 00:50:49,120 - INFO - Batch size: 12012 rows
+2025-08-11 00:51:04,925 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_005104_924.parquet
+2025-08-11 00:51:04,925 - INFO - Batch size: 10381 rows
+2025-08-11 00:51:20,814 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_005120_813.parquet
+2025-08-11 00:51:20,814 - INFO - Batch size: 10344 rows
+2025-08-11 00:51:36,611 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_005136_609.parquet
+2025-08-11 00:51:36,611 - INFO - Batch size: 10136 rows
+2025-08-11 00:51:39,882 - INFO - Data written to incremental file: pparts_temp_20250811_004621_inc_20250811_005139_880.parquet
+2025-08-11 00:51:39,882 - INFO - Batch size: 2020 rows
+2025-08-11 00:51:39,882 - INFO - Merging 20 incremental files for pparts_temp_20250811_004621.parquet...
+2025-08-11 00:51:39,932 - INFO - Merge complete: 202485 total rows (202485 new)
+2025-08-11 00:51:39,932 - INFO - Final file: data/pparts_temp_20250811_004621.parquet
+2025-08-11 00:51:40,193 - INFO - Timing data saved to data/timing_debug_20250811_005139.parquet
+2025-08-11 00:51:40,193 - INFO - Timing stats saved to data/timing_debug_20250811_005139.txt
+2025-08-11 01:19:07,494 - INFO - Data written to incremental file: pparts_temp_20250811_011906_inc_20250811_011907_492.parquet
+2025-08-11 01:19:07,494 - INFO - Batch size: 149 rows
+2025-08-11 01:19:07,494 - INFO - Merging 1 incremental files for pparts_temp_20250811_011906.parquet...
+2025-08-11 01:19:07,499 - INFO - Merge complete: 149 total rows (149 new)
+2025-08-11 01:19:07,499 - INFO - Final file: data/pparts_temp_20250811_011906.parquet
+2025-08-11 01:19:07,503 - INFO - Timing data saved to data/timing_debug_20250811_011907.parquet
+2025-08-11 01:19:07,503 - INFO - Timing stats saved to data/timing_debug_20250811_011907.txt
+2025-08-11 01:20:35,234 - INFO - Data written to incremental file: pparts_temp_20250811_012033_inc_20250811_012035_232.parquet
+2025-08-11 01:20:35,234 - INFO - Batch size: 216 rows
+2025-08-11 01:20:35,234 - INFO - Merging 1 incremental files for pparts_temp_20250811_012033.parquet...
+2025-08-11 01:20:35,241 - INFO - Merge complete: 216 total rows (216 new)
+2025-08-11 01:20:35,242 - INFO - Final file: data/pparts_temp_20250811_012033.parquet
+2025-08-11 01:20:35,246 - INFO - Timing data saved to data/timing_debug_20250811_012035.parquet
+2025-08-11 01:20:35,246 - INFO - Timing stats saved to data/timing_debug_20250811_012035.txt
+2025-08-11 01:20:57,294 - INFO - Merging 1 incremental files for pparts_temp_20250811_012056.parquet...
+2025-08-11 01:20:57,308 - INFO - Merge complete: 217 total rows (217 new)
+2025-08-11 01:20:57,308 - INFO - Final file: data/pparts_temp_20250811_012056.parquet
+2025-08-11 01:28:25,763 - INFO - Data written to incremental file: pparts_temp_20250811_012824_inc_20250811_012825_762.parquet
+2025-08-11 01:28:25,763 - INFO - Batch size: 65 rows
+2025-08-11 01:28:25,764 - INFO - Merging 1 incremental files for pparts_temp_20250811_012824.parquet...
+2025-08-11 01:28:25,777 - INFO - Merge complete: 65 total rows (65 new)
+2025-08-11 01:28:25,777 - INFO - Final file: data/pparts_temp_20250811_012824.parquet
+2025-08-11 01:28:25,779 - INFO - Timing data saved to data/timing_debug_20250811_012825.parquet
+2025-08-11 01:28:25,779 - INFO - Timing stats saved to data/timing_debug_20250811_012825.txt
+2025-08-11 01:31:47,639 - INFO - Merging 1 incremental files for pparts_temp_20250811_013146.parquet...
+2025-08-11 01:31:47,653 - INFO - Merge complete: 117 total rows (117 new)
+2025-08-11 01:31:47,653 - INFO - Final file: data/pparts_temp_20250811_013146.parquet
+2025-08-11 01:39:16,886 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_013916_884.parquet
+2025-08-11 01:39:16,886 - INFO - Batch size: 10081 rows
+2025-08-11 01:39:38,523 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_013938_522.parquet
+2025-08-11 01:39:38,523 - INFO - Batch size: 10117 rows
+2025-08-11 01:40:00,149 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014000_148.parquet
+2025-08-11 01:40:00,149 - INFO - Batch size: 10079 rows
+2025-08-11 01:40:21,720 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014021_718.parquet
+2025-08-11 01:40:21,720 - INFO - Batch size: 10008 rows
+2025-08-11 01:40:43,374 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014043_372.parquet
+2025-08-11 01:40:43,374 - INFO - Batch size: 10143 rows
+2025-08-11 01:41:05,086 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014105_084.parquet
+2025-08-11 01:41:05,086 - INFO - Batch size: 10408 rows
+2025-08-11 01:41:26,794 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014126_792.parquet
+2025-08-11 01:41:26,794 - INFO - Batch size: 10112 rows
+2025-08-11 01:41:52,969 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014152_968.parquet
+2025-08-11 01:41:52,969 - INFO - Batch size: 11885 rows
+2025-08-11 01:42:14,698 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014214_696.parquet
+2025-08-11 01:42:14,698 - INFO - Batch size: 10163 rows
+2025-08-11 01:42:36,575 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014236_573.parquet
+2025-08-11 01:42:36,575 - INFO - Batch size: 10372 rows
+2025-08-11 01:42:58,580 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014258_578.parquet
+2025-08-11 01:42:58,580 - INFO - Batch size: 10130 rows
+2025-08-11 01:43:20,503 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014320_502.parquet
+2025-08-11 01:43:20,503 - INFO - Batch size: 10164 rows
+2025-08-11 01:43:42,318 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014342_317.parquet
+2025-08-11 01:43:42,318 - INFO - Batch size: 10040 rows
+2025-08-11 01:44:08,574 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014408_572.parquet
+2025-08-11 01:44:08,574 - INFO - Batch size: 11947 rows
+2025-08-11 01:44:34,763 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014434_762.parquet
+2025-08-11 01:44:34,763 - INFO - Batch size: 11959 rows
+2025-08-11 01:45:01,175 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014501_174.parquet
+2025-08-11 01:45:01,175 - INFO - Batch size: 12012 rows
+2025-08-11 01:45:23,241 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014523_239.parquet
+2025-08-11 01:45:23,241 - INFO - Batch size: 10382 rows
+2025-08-11 01:45:45,326 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014545_325.parquet
+2025-08-11 01:45:45,326 - INFO - Batch size: 10344 rows
+2025-08-11 01:46:07,457 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014607_455.parquet
+2025-08-11 01:46:07,457 - INFO - Batch size: 10136 rows
+2025-08-11 01:46:11,939 - INFO - Data written to incremental file: pparts_temp_20250811_013854_inc_20250811_014611_938.parquet
+2025-08-11 01:46:11,939 - INFO - Batch size: 2020 rows
+2025-08-11 01:46:11,940 - INFO - Merging 20 incremental files for pparts_temp_20250811_013854.parquet...
+2025-08-11 01:46:11,990 - INFO - Merge complete: 202502 total rows (202502 new)
+2025-08-11 01:46:11,990 - INFO - Final file: data/pparts_temp_20250811_013854.parquet
+2025-08-11 01:46:12,252 - INFO - Timing data saved to data/timing_debug_20250811_014611.parquet
+2025-08-11 01:46:12,252 - INFO - Timing stats saved to data/timing_debug_20250811_014611.txt
+2025-08-11 01:53:44,916 - INFO - Data written to incremental file: pparts_temp_20250811_015338_inc_20250811_015344_914.parquet
+2025-08-11 01:53:44,916 - INFO - Batch size: 2029 rows
+2025-08-11 01:53:44,917 - INFO - Merging 1 incremental files for pparts_temp_20250811_015338.parquet...
+2025-08-11 01:53:44,923 - INFO - Merge complete: 2029 total rows (2029 new)
+2025-08-11 01:53:44,923 - INFO - Final file: data/pparts_temp_20250811_015338.parquet
+2025-08-11 01:53:44,932 - INFO - Timing data saved to data/timing_debug_20250811_015344.parquet
+2025-08-11 01:53:44,932 - INFO - Timing stats saved to data/timing_debug_20250811_015344.txt
+2025-08-11 01:54:22,912 - INFO - Data written to incremental file: pparts_temp_20250811_015358_inc_20250811_015422_909.parquet
+2025-08-11 01:54:22,912 - INFO - Batch size: 10005 rows
+2025-08-11 01:54:45,955 - INFO - Data written to incremental file: pparts_temp_20250811_015358_inc_20250811_015445_953.parquet
+2025-08-11 01:54:45,956 - INFO - Batch size: 10006 rows
+2025-08-11 01:54:46,434 - INFO - Data written to incremental file: pparts_temp_20250811_015358_inc_20250811_015446_434.parquet
+2025-08-11 01:54:46,435 - INFO - Batch size: 187 rows
+2025-08-11 01:54:46,435 - INFO - Merging 3 incremental files for pparts_temp_20250811_015358.parquet...
+2025-08-11 01:54:46,451 - INFO - Merge complete: 20198 total rows (20198 new)
+2025-08-11 01:54:46,452 - INFO - Final file: data/pparts_temp_20250811_015358.parquet
+2025-08-11 01:54:46,490 - INFO - Timing data saved to data/timing_debug_20250811_015446.parquet
+2025-08-11 01:54:46,490 - INFO - Timing stats saved to data/timing_debug_20250811_015446.txt
+2025-08-11 01:55:28,722 - INFO - Data written to incremental file: pparts_temp_20250811_015525_inc_20250811_015528_718.parquet
+2025-08-11 01:55:28,722 - INFO - Batch size: 10005 rows
+2025-08-11 01:55:30,804 - INFO - Data written to incremental file: pparts_temp_20250811_015525_inc_20250811_015530_802.parquet
+2025-08-11 01:55:30,804 - INFO - Batch size: 10006 rows
+2025-08-11 01:55:30,900 - INFO - Data written to incremental file: pparts_temp_20250811_015525_inc_20250811_015530_899.parquet
+2025-08-11 01:55:30,900 - INFO - Batch size: 187 rows
+2025-08-11 01:55:30,900 - INFO - Merging 3 incremental files for pparts_temp_20250811_015525.parquet...
+2025-08-11 01:55:30,918 - INFO - Merge complete: 20198 total rows (20198 new)
+2025-08-11 01:55:30,918 - INFO - Final file: data/pparts_temp_20250811_015525.parquet
+2025-08-11 01:55:30,945 - INFO - Timing data saved to data/timing_debug_20250811_015530.parquet
+2025-08-11 01:55:30,945 - INFO - Timing stats saved to data/timing_debug_20250811_015530.txt
+2025-08-11 01:56:31,459 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015631_457.parquet
+2025-08-11 01:56:31,459 - INFO - Batch size: 10081 rows
+2025-08-11 01:56:32,680 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015632_678.parquet
+2025-08-11 01:56:32,680 - INFO - Batch size: 10117 rows
+2025-08-11 01:56:33,920 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015633_919.parquet
+2025-08-11 01:56:33,920 - INFO - Batch size: 10079 rows
+2025-08-11 01:56:35,233 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015635_231.parquet
+2025-08-11 01:56:35,233 - INFO - Batch size: 10008 rows
+2025-08-11 01:56:36,605 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015636_603.parquet
+2025-08-11 01:56:36,605 - INFO - Batch size: 10143 rows
+2025-08-11 01:56:37,994 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015637_992.parquet
+2025-08-11 01:56:37,994 - INFO - Batch size: 10408 rows
+2025-08-11 01:56:39,382 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015639_381.parquet
+2025-08-11 01:56:39,382 - INFO - Batch size: 10112 rows
+2025-08-11 01:56:41,048 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015641_046.parquet
+2025-08-11 01:56:41,048 - INFO - Batch size: 11885 rows
+2025-08-11 01:56:42,474 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015642_473.parquet
+2025-08-11 01:56:42,475 - INFO - Batch size: 10163 rows
+2025-08-11 01:56:44,013 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015644_011.parquet
+2025-08-11 01:56:44,013 - INFO - Batch size: 10372 rows
+2025-08-11 01:56:45,547 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015645_545.parquet
+2025-08-11 01:56:45,547 - INFO - Batch size: 10130 rows
+2025-08-11 01:56:47,117 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015647_116.parquet
+2025-08-11 01:56:47,117 - INFO - Batch size: 10164 rows
+2025-08-11 01:56:48,795 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015648_794.parquet
+2025-08-11 01:56:48,795 - INFO - Batch size: 10040 rows
+2025-08-11 01:56:50,802 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015650_800.parquet
+2025-08-11 01:56:50,802 - INFO - Batch size: 11947 rows
+2025-08-11 01:56:52,665 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015652_664.parquet
+2025-08-11 01:56:52,665 - INFO - Batch size: 11959 rows
+2025-08-11 01:56:54,584 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015654_582.parquet
+2025-08-11 01:56:54,584 - INFO - Batch size: 12012 rows
+2025-08-11 01:56:56,209 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015656_208.parquet
+2025-08-11 01:56:56,209 - INFO - Batch size: 10382 rows
+2025-08-11 01:56:57,823 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015657_821.parquet
+2025-08-11 01:56:57,823 - INFO - Batch size: 10344 rows
+2025-08-11 01:56:59,446 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015659_444.parquet
+2025-08-11 01:56:59,446 - INFO - Batch size: 10136 rows
+2025-08-11 01:56:59,830 - INFO - Data written to incremental file: pparts_temp_20250811_015629_inc_20250811_015659_829.parquet
+2025-08-11 01:56:59,830 - INFO - Batch size: 2020 rows
+2025-08-11 01:56:59,831 - INFO - Merging 20 incremental files for pparts_temp_20250811_015629.parquet...
+2025-08-11 01:56:59,876 - INFO - Merge complete: 202502 total rows (202502 new)
+2025-08-11 01:56:59,876 - INFO - Final file: data/pparts_temp_20250811_015629.parquet
+2025-08-11 01:57:00,053 - INFO - Timing data saved to data/timing_debug_20250811_015659.parquet
+2025-08-11 01:57:00,053 - INFO - Timing stats saved to data/timing_debug_20250811_015659.txt
+2025-08-11 01:57:17,463 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015717_461.parquet
+2025-08-11 01:57:17,463 - INFO - Batch size: 10081 rows
+2025-08-11 01:57:18,743 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015718_742.parquet
+2025-08-11 01:57:18,743 - INFO - Batch size: 10117 rows
+2025-08-11 01:57:20,081 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015720_079.parquet
+2025-08-11 01:57:20,081 - INFO - Batch size: 10079 rows
+2025-08-11 01:57:21,513 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015721_511.parquet
+2025-08-11 01:57:21,513 - INFO - Batch size: 10008 rows
+2025-08-11 01:57:22,989 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015722_988.parquet
+2025-08-11 01:57:22,989 - INFO - Batch size: 10143 rows
+2025-08-11 01:57:24,488 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015724_487.parquet
+2025-08-11 01:57:24,488 - INFO - Batch size: 10214 rows
+2025-08-11 01:57:26,014 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015726_013.parquet
+2025-08-11 01:57:26,014 - INFO - Batch size: 10093 rows
+2025-08-11 01:57:27,567 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015727_566.parquet
+2025-08-11 01:57:27,567 - INFO - Batch size: 10147 rows
+2025-08-11 01:57:29,114 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015729_112.parquet
+2025-08-11 01:57:29,114 - INFO - Batch size: 10073 rows
+2025-08-11 01:57:30,769 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015730_767.parquet
+2025-08-11 01:57:30,769 - INFO - Batch size: 10112 rows
+2025-08-11 01:57:32,439 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015732_438.parquet
+2025-08-11 01:57:32,439 - INFO - Batch size: 10197 rows
+2025-08-11 01:57:34,077 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015734_075.parquet
+2025-08-11 01:57:34,077 - INFO - Batch size: 10028 rows
+2025-08-11 01:57:35,754 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015735_753.parquet
+2025-08-11 01:57:35,755 - INFO - Batch size: 10024 rows
+2025-08-11 01:57:37,488 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015737_487.parquet
+2025-08-11 01:57:37,488 - INFO - Batch size: 10153 rows
+2025-08-11 01:57:39,213 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015739_211.parquet
+2025-08-11 01:57:39,213 - INFO - Batch size: 10152 rows
+2025-08-11 01:57:40,944 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015740_943.parquet
+2025-08-11 01:57:40,944 - INFO - Batch size: 10174 rows
+2025-08-11 01:57:42,664 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015742_662.parquet
+2025-08-11 01:57:42,664 - INFO - Batch size: 10134 rows
+2025-08-11 01:57:44,370 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015744_369.parquet
+2025-08-11 01:57:44,370 - INFO - Batch size: 10150 rows
+2025-08-11 01:57:46,069 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015746_068.parquet
+2025-08-11 01:57:46,069 - INFO - Batch size: 10142 rows
+2025-08-11 01:57:47,828 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015747_827.parquet
+2025-08-11 01:57:47,828 - INFO - Batch size: 10098 rows
+2025-08-11 01:57:47,908 - INFO - Data written to incremental file: pparts_temp_20250811_015715_inc_20250811_015747_908.parquet
+2025-08-11 01:57:47,908 - INFO - Batch size: 183 rows
+2025-08-11 01:57:47,909 - INFO - Merging 21 incremental files for pparts_temp_20250811_015715.parquet...
+2025-08-11 01:57:47,955 - INFO - Merge complete: 202502 total rows (202502 new)
+2025-08-11 01:57:47,955 - INFO - Final file: data/pparts_temp_20250811_015715.parquet
+2025-08-11 01:57:48,135 - INFO - Timing data saved to data/timing_debug_20250811_015747.parquet
+2025-08-11 01:57:48,136 - INFO - Timing stats saved to data/timing_debug_20250811_015747.txt
+2025-08-11 01:58:20,380 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015820_377.parquet
+2025-08-11 01:58:20,380 - INFO - Batch size: 10005 rows
+2025-08-11 01:58:22,434 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015822_432.parquet
+2025-08-11 01:58:22,434 - INFO - Batch size: 10006 rows
+2025-08-11 01:58:24,550 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015824_548.parquet
+2025-08-11 01:58:24,550 - INFO - Batch size: 10005 rows
+2025-08-11 01:58:26,743 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015826_741.parquet
+2025-08-11 01:58:26,743 - INFO - Batch size: 10000 rows
+2025-08-11 01:58:29,010 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015829_008.parquet
+2025-08-11 01:58:29,010 - INFO - Batch size: 10008 rows
+2025-08-11 01:58:31,237 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015831_235.parquet
+2025-08-11 01:58:31,237 - INFO - Batch size: 10003 rows
+2025-08-11 01:58:33,551 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015833_549.parquet
+2025-08-11 01:58:33,551 - INFO - Batch size: 10018 rows
+2025-08-11 01:58:35,912 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015835_910.parquet
+2025-08-11 01:58:35,912 - INFO - Batch size: 10013 rows
+2025-08-11 01:58:38,259 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015838_257.parquet
+2025-08-11 01:58:38,259 - INFO - Batch size: 10006 rows
+2025-08-11 01:58:40,687 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015840_686.parquet
+2025-08-11 01:58:40,687 - INFO - Batch size: 10003 rows
+2025-08-11 01:58:43,104 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015843_102.parquet
+2025-08-11 01:58:43,104 - INFO - Batch size: 10004 rows
+2025-08-11 01:58:45,571 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015845_569.parquet
+2025-08-11 01:58:45,571 - INFO - Batch size: 10003 rows
+2025-08-11 01:58:48,088 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015848_087.parquet
+2025-08-11 01:58:48,088 - INFO - Batch size: 10013 rows
+2025-08-11 01:58:50,618 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015850_616.parquet
+2025-08-11 01:58:50,618 - INFO - Batch size: 10000 rows
+2025-08-11 01:58:53,163 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015853_161.parquet
+2025-08-11 01:58:53,163 - INFO - Batch size: 10010 rows
+2025-08-11 01:58:55,742 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015855_741.parquet
+2025-08-11 01:58:55,742 - INFO - Batch size: 10013 rows
+2025-08-11 01:58:58,323 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015858_321.parquet
+2025-08-11 01:58:58,323 - INFO - Batch size: 10002 rows
+2025-08-11 01:59:00,837 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015900_835.parquet
+2025-08-11 01:59:00,837 - INFO - Batch size: 10021 rows
+2025-08-11 01:59:03,354 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015903_352.parquet
+2025-08-11 01:59:03,354 - INFO - Batch size: 10001 rows
+2025-08-11 01:59:05,913 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015905_911.parquet
+2025-08-11 01:59:05,913 - INFO - Batch size: 10008 rows
+2025-08-11 01:59:06,580 - INFO - Data written to incremental file: pparts_temp_20250811_015817_inc_20250811_015906_579.parquet
+2025-08-11 01:59:06,580 - INFO - Batch size: 2360 rows
+2025-08-11 01:59:06,581 - INFO - Merging 21 incremental files for pparts_temp_20250811_015817.parquet...
+2025-08-11 01:59:06,632 - INFO - Merge complete: 202502 total rows (202502 new)
+2025-08-11 01:59:06,632 - INFO - Final file: data/pparts_temp_20250811_015817.parquet
+2025-08-11 01:59:06,860 - INFO - Timing data saved to data/timing_debug_20250811_015906.parquet
+2025-08-11 01:59:06,860 - INFO - Timing stats saved to data/timing_debug_20250811_015906.txt
+2025-08-11 02:01:37,206 - INFO - Data written to incremental file: pparts_temp_20250811_020136_inc_20250811_020137_203.parquet
+2025-08-11 02:01:37,206 - INFO - Batch size: 34 rows
+2025-08-11 02:01:37,207 - INFO - Merging 1 incremental files for pparts_temp_20250811_020136.parquet...
+2025-08-11 02:01:37,220 - INFO - Merge complete: 34 total rows (34 new)
+2025-08-11 02:01:37,220 - INFO - Final file: data/pparts_temp_20250811_020136.parquet
+2025-08-11 02:01:37,223 - INFO - Timing data saved to data/timing_debug_20250811_020137.parquet
+2025-08-11 02:01:37,223 - INFO - Timing stats saved to data/timing_debug_20250811_020137.txt
+2025-08-11 02:03:12,796 - INFO - Data written to incremental file: pparts_temp_20250811_020311_inc_20250811_020312_794.parquet
+2025-08-11 02:03:12,796 - INFO - Batch size: 34 rows
+2025-08-11 02:03:12,797 - INFO - Merging 1 incremental files for pparts_temp_20250811_020311.parquet...
+2025-08-11 02:03:12,811 - INFO - Merge complete: 34 total rows (34 new)
+2025-08-11 02:03:12,811 - INFO - Final file: data/pparts_temp_20250811_020311.parquet
+2025-08-11 02:03:12,814 - INFO - Timing data saved to data/timing_debug_20250811_020312.parquet
+2025-08-11 02:03:12,815 - INFO - Timing stats saved to data/timing_debug_20250811_020312.txt
+2025-08-11 02:04:04,539 - INFO - Data written to incremental file: pparts_temp_20250811_020403_inc_20250811_020404_537.parquet
+2025-08-11 02:04:04,539 - INFO - Batch size: 34 rows
+2025-08-11 02:04:04,539 - INFO - Merging 1 incremental files for pparts_temp_20250811_020403.parquet...
+2025-08-11 02:04:04,553 - INFO - Merge complete: 34 total rows (34 new)
+2025-08-11 02:04:04,553 - INFO - Final file: data/pparts_temp_20250811_020403.parquet
+2025-08-11 02:04:04,556 - INFO - Timing data saved to data/timing_debug_20250811_020404.parquet
+2025-08-11 02:04:04,556 - INFO - Timing stats saved to data/timing_debug_20250811_020404.txt
+2025-08-11 02:12:26,625 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021226_624.parquet
+2025-08-11 02:12:26,626 - INFO - Batch size: 10081 rows
+2025-08-11 02:12:42,244 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021242_242.parquet
+2025-08-11 02:12:42,244 - INFO - Batch size: 10117 rows
+2025-08-11 02:12:58,067 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021258_066.parquet
+2025-08-11 02:12:58,068 - INFO - Batch size: 10079 rows
+2025-08-11 02:13:13,831 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021313_830.parquet
+2025-08-11 02:13:13,831 - INFO - Batch size: 10008 rows
+2025-08-11 02:13:29,593 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021329_592.parquet
+2025-08-11 02:13:29,593 - INFO - Batch size: 10143 rows
+2025-08-11 02:13:45,094 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021345_092.parquet
+2025-08-11 02:13:45,094 - INFO - Batch size: 10214 rows
+2025-08-11 02:14:00,921 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021400_919.parquet
+2025-08-11 02:14:00,921 - INFO - Batch size: 10093 rows
+2025-08-11 02:14:16,984 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021416_982.parquet
+2025-08-11 02:14:16,984 - INFO - Batch size: 10147 rows
+2025-08-11 02:14:32,764 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021432_762.parquet
+2025-08-11 02:14:32,764 - INFO - Batch size: 10073 rows
+2025-08-11 02:14:48,275 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021448_274.parquet
+2025-08-11 02:14:48,275 - INFO - Batch size: 10112 rows
+2025-08-11 02:15:04,252 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021504_250.parquet
+2025-08-11 02:15:04,252 - INFO - Batch size: 10197 rows
+2025-08-11 02:15:19,800 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021519_799.parquet
+2025-08-11 02:15:19,800 - INFO - Batch size: 10028 rows
+2025-08-11 02:15:35,612 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021535_610.parquet
+2025-08-11 02:15:35,612 - INFO - Batch size: 10024 rows
+2025-08-11 02:15:51,793 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021551_791.parquet
+2025-08-11 02:15:51,793 - INFO - Batch size: 10153 rows
+2025-08-11 02:16:08,048 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021608_047.parquet
+2025-08-11 02:16:08,048 - INFO - Batch size: 10152 rows
+2025-08-11 02:16:24,275 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021624_274.parquet
+2025-08-11 02:16:24,276 - INFO - Batch size: 10174 rows
+2025-08-11 02:16:40,267 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021640_266.parquet
+2025-08-11 02:16:40,267 - INFO - Batch size: 10134 rows
+2025-08-11 02:16:55,964 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021655_963.parquet
+2025-08-11 02:16:55,964 - INFO - Batch size: 10150 rows
+2025-08-11 02:17:11,740 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021711_738.parquet
+2025-08-11 02:17:11,740 - INFO - Batch size: 10142 rows
+2025-08-11 02:17:27,768 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021727_767.parquet
+2025-08-11 02:17:27,768 - INFO - Batch size: 10098 rows
+2025-08-11 02:17:28,151 - INFO - Data written to incremental file: pparts_temp_20250811_021209_inc_20250811_021728_151.parquet
+2025-08-11 02:17:28,151 - INFO - Batch size: 183 rows
+2025-08-11 02:17:28,152 - INFO - Merging 21 incremental files for pparts_temp_20250811_021209.parquet...
+2025-08-11 02:17:28,198 - INFO - Merge complete: 202502 total rows (202502 new)
+2025-08-11 02:17:28,198 - INFO - Final file: data/pparts_temp_20250811_021209.parquet
+2025-08-11 02:17:28,471 - INFO - Timing data saved to data/timing_debug_20250811_021728.parquet
+2025-08-11 02:17:28,471 - INFO - Timing stats saved to data/timing_debug_20250811_021728.txt
+2025-08-11 02:17:46,257 - INFO - Resuming from prime 530729741 (start_idx: 27887001)
+2025-08-11 02:18:05,316 - INFO - Data written to incremental file: pparts_inc_20250811_021805_314.parquet
+2025-08-11 02:18:05,316 - INFO - Batch size: 10177 rows
+2025-08-11 02:18:22,659 - INFO - Data written to incremental file: pparts_inc_20250811_021822_657.parquet
+2025-08-11 02:18:22,659 - INFO - Batch size: 10035 rows
+2025-08-11 02:18:40,815 - INFO - Data written to incremental file: pparts_inc_20250811_021840_813.parquet
+2025-08-11 02:18:40,815 - INFO - Batch size: 10041 rows
+2025-08-11 02:18:58,353 - INFO - Data written to incremental file: pparts_inc_20250811_021858_351.parquet
+2025-08-11 02:18:58,353 - INFO - Batch size: 10057 rows
+2025-08-11 02:19:15,192 - INFO - Data written to incremental file: pparts_inc_20250811_021915_190.parquet
+2025-08-11 02:19:15,192 - INFO - Batch size: 10076 rows
+2025-08-11 02:19:32,043 - INFO - Data written to incremental file: pparts_inc_20250811_021932_041.parquet
+2025-08-11 02:19:32,043 - INFO - Batch size: 10044 rows
+2025-08-11 02:19:48,950 - INFO - Data written to incremental file: pparts_inc_20250811_021948_949.parquet
+2025-08-11 02:19:48,951 - INFO - Batch size: 10048 rows
+2025-08-11 02:20:05,855 - INFO - Data written to incremental file: pparts_inc_20250811_022005_853.parquet
+2025-08-11 02:20:05,855 - INFO - Batch size: 10135 rows
+2025-08-11 02:20:22,723 - INFO - Data written to incremental file: pparts_inc_20250811_022022_722.parquet
+2025-08-11 02:20:22,723 - INFO - Batch size: 10112 rows
+2025-08-11 02:20:39,591 - INFO - Data written to incremental file: pparts_inc_20250811_022039_589.parquet
+2025-08-11 02:20:39,591 - INFO - Batch size: 10132 rows
+2025-08-11 02:20:56,802 - INFO - Data written to incremental file: pparts_inc_20250811_022056_800.parquet
+2025-08-11 02:20:56,802 - INFO - Batch size: 10107 rows
+2025-08-11 02:21:13,680 - INFO - Data written to incremental file: pparts_inc_20250811_022113_678.parquet
+2025-08-11 02:21:13,680 - INFO - Batch size: 10129 rows
+2025-08-11 02:21:30,428 - INFO - Data written to incremental file: pparts_inc_20250811_022130_427.parquet
+2025-08-11 02:21:30,428 - INFO - Batch size: 10127 rows
+2025-08-11 02:21:47,442 - INFO - Data written to incremental file: pparts_inc_20250811_022147_440.parquet
+2025-08-11 02:21:47,442 - INFO - Batch size: 10124 rows
+2025-08-11 02:22:04,321 - INFO - Data written to incremental file: pparts_inc_20250811_022204_319.parquet
+2025-08-11 02:22:04,321 - INFO - Batch size: 10021 rows
+2025-08-11 02:22:21,115 - INFO - Data written to incremental file: pparts_inc_20250811_022221_113.parquet
+2025-08-11 02:22:21,115 - INFO - Batch size: 10070 rows
+2025-08-11 02:22:37,911 - INFO - Data written to incremental file: pparts_inc_20250811_022237_909.parquet
+2025-08-11 02:22:37,911 - INFO - Batch size: 10119 rows
+2025-08-11 02:22:54,412 - INFO - Data written to incremental file: pparts_inc_20250811_022254_410.parquet
+2025-08-11 02:22:54,412 - INFO - Batch size: 10067 rows
+2025-08-11 02:23:11,331 - INFO - Data written to incremental file: pparts_inc_20250811_022311_330.parquet
+2025-08-11 02:23:11,331 - INFO - Batch size: 10070 rows
+2025-08-11 02:23:27,902 - INFO - Data written to incremental file: pparts_inc_20250811_022327_901.parquet
+2025-08-11 02:23:27,903 - INFO - Batch size: 9849 rows
+2025-08-11 02:23:27,903 - INFO - Merging 20 incremental files for pparts.parquet...
+2025-08-11 02:23:28,094 - INFO - Created backup: data/pparts.backup.parquet
+2025-08-11 02:23:28,551 - INFO - Existing data: 57668481 rows
+2025-08-11 02:23:34,547 - INFO - Merge complete: 57870021 total rows (201540 new)
+2025-08-11 02:23:34,547 - INFO - Final file: data/pparts.parquet
+2025-08-11 02:23:34,858 - INFO - Timing data saved to data/timing_debug_20250811_022334.parquet
+2025-08-11 02:23:34,858 - INFO - Timing stats saved to data/timing_debug_20250811_022334.txt
+2025-08-11 02:25:48,971 - INFO - Resuming from prime 532739303 (start_idx: 27987001)
+2025-08-11 02:25:53,769 - INFO - Data written to incremental file: pparts_inc_20250811_022553_767.parquet
+2025-08-11 02:25:53,769 - INFO - Batch size: 10114 rows
+2025-08-11 02:25:57,108 - INFO - Data written to incremental file: pparts_inc_20250811_022557_106.parquet
+2025-08-11 02:25:57,108 - INFO - Batch size: 10146 rows
+2025-08-11 02:26:00,454 - INFO - Data written to incremental file: pparts_inc_20250811_022600_452.parquet
+2025-08-11 02:26:00,454 - INFO - Batch size: 10189 rows
+2025-08-11 02:26:03,705 - INFO - Data written to incremental file: pparts_inc_20250811_022603_703.parquet
+2025-08-11 02:26:03,705 - INFO - Batch size: 10076 rows
+2025-08-11 02:26:07,045 - INFO - Data written to incremental file: pparts_inc_20250811_022607_043.parquet
+2025-08-11 02:26:07,045 - INFO - Batch size: 10173 rows
+2025-08-11 02:26:10,403 - INFO - Data written to incremental file: pparts_inc_20250811_022610_401.parquet
+2025-08-11 02:26:10,403 - INFO - Batch size: 10100 rows
+2025-08-11 02:26:13,815 - INFO - Data written to incremental file: pparts_inc_20250811_022613_813.parquet
+2025-08-11 02:26:13,815 - INFO - Batch size: 10174 rows
+2025-08-11 02:26:17,168 - INFO - Data written to incremental file: pparts_inc_20250811_022617_167.parquet
+2025-08-11 02:26:17,168 - INFO - Batch size: 10101 rows
+2025-08-11 02:26:20,504 - INFO - Data written to incremental file: pparts_inc_20250811_022620_503.parquet
+2025-08-11 02:26:20,505 - INFO - Batch size: 10088 rows
+2025-08-11 02:26:23,832 - INFO - Data written to incremental file: pparts_inc_20250811_022623_830.parquet
+2025-08-11 02:26:23,832 - INFO - Batch size: 10065 rows
+2025-08-11 02:26:27,157 - INFO - Data written to incremental file: pparts_inc_20250811_022627_156.parquet
+2025-08-11 02:26:27,157 - INFO - Batch size: 10076 rows
+2025-08-11 02:26:30,502 - INFO - Data written to incremental file: pparts_inc_20250811_022630_500.parquet
+2025-08-11 02:26:30,502 - INFO - Batch size: 10039 rows
+2025-08-11 02:26:33,813 - INFO - Data written to incremental file: pparts_inc_20250811_022633_811.parquet
+2025-08-11 02:26:33,813 - INFO - Batch size: 10180 rows
+2025-08-11 02:26:37,135 - INFO - Data written to incremental file: pparts_inc_20250811_022637_133.parquet
+2025-08-11 02:26:37,135 - INFO - Batch size: 10052 rows
+2025-08-11 02:26:40,461 - INFO - Data written to incremental file: pparts_inc_20250811_022640_460.parquet
+2025-08-11 02:26:40,461 - INFO - Batch size: 10104 rows
+2025-08-11 02:26:43,774 - INFO - Data written to incremental file: pparts_inc_20250811_022643_772.parquet
+2025-08-11 02:26:43,774 - INFO - Batch size: 10168 rows
+2025-08-11 02:26:47,100 - INFO - Data written to incremental file: pparts_inc_20250811_022647_099.parquet
+2025-08-11 02:26:47,100 - INFO - Batch size: 10012 rows
+2025-08-11 02:26:50,405 - INFO - Data written to incremental file: pparts_inc_20250811_022650_403.parquet
+2025-08-11 02:26:50,405 - INFO - Batch size: 10083 rows
+2025-08-11 02:26:53,736 - INFO - Data written to incremental file: pparts_inc_20250811_022653_734.parquet
+2025-08-11 02:26:53,736 - INFO - Batch size: 10103 rows
+2025-08-11 02:26:57,006 - INFO - Data written to incremental file: pparts_inc_20250811_022657_004.parquet
+2025-08-11 02:26:57,006 - INFO - Batch size: 10119 rows
+2025-08-11 02:26:57,119 - INFO - Data written to incremental file: pparts_inc_20250811_022657_119.parquet
+2025-08-11 02:26:57,120 - INFO - Batch size: 186 rows
+2025-08-11 02:26:57,120 - INFO - Merging 21 incremental files for pparts.parquet...
+2025-08-11 02:26:57,378 - INFO - Created backup: data/pparts.backup.parquet
+2025-08-11 02:26:57,854 - INFO - Existing data: 57870021 rows
+2025-08-11 02:27:03,961 - INFO - Merge complete: 58072369 total rows (202348 new)
+2025-08-11 02:27:03,961 - INFO - Final file: data/pparts.parquet
+2025-08-11 02:27:04,155 - INFO - Timing data saved to data/timing_debug_20250811_022703.parquet
+2025-08-11 02:27:04,155 - INFO - Timing stats saved to data/timing_debug_20250811_022703.txt
+2025-08-11 17:11:44,282 - INFO - No existing run files found, starting from first prime
+2025-08-11 17:11:45,234 - INFO - Using separate run files - no incremental merge needed
+2025-08-11 17:12:57,600 - INFO - Resuming from prime 2 (start_idx: 1) from run files
+2025-08-11 17:14:24,078 - INFO - No existing run files found, starting from first prime
+2025-08-11 17:14:25,120 - INFO - Data written to run file: pparts_run_20250811_171425.parquet
+2025-08-11 17:14:25,120 - INFO - Batch size: 21 rows
+2025-08-11 17:14:25,120 - INFO - Using separate run files - no incremental merge needed
+2025-08-11 17:14:25,122 - INFO - Timing data saved to data/timing_debug_20250811_171425.parquet
+2025-08-11 17:14:25,122 - INFO - Timing stats saved to data/timing_debug_20250811_171425.txt
+2025-08-11 17:15:36,914 - INFO - No existing run files found, starting from first prime
+2025-08-11 17:15:37,199 - INFO - Resuming from prime 530709623 (start_idx: 27886001) from main file
+2025-08-11 17:15:38,399 - INFO - Data written to run file: pparts_run_20250811_171538.parquet
+2025-08-11 17:15:38,399 - INFO - Batch size: 15 rows
+2025-08-11 17:15:38,399 - INFO - Using separate run files - no incremental merge needed
+2025-08-11 17:15:38,400 - INFO - Timing data saved to data/timing_debug_20250811_171538.parquet
+2025-08-11 17:15:38,400 - INFO - Timing stats saved to data/timing_debug_20250811_171538.txt
+2025-08-12 17:51:21,508 - INFO - No existing run files found, starting from first prime
+2025-08-12 17:51:21,771 - INFO - Resuming from prime 530709623 (start_idx: 27886001) from main file
+2025-08-12 17:51:29,979 - INFO - Using separate run files - no incremental merge needed
+2025-08-12 17:53:19,567 - INFO - No existing run files found, starting from first prime
+2025-08-12 17:53:19,584 - INFO - Resuming from prime 532719977 (start_idx: 34000) from main file
+2025-08-12 17:53:38,240 - INFO - No existing run files found, starting from first prime
+2025-08-12 17:53:38,265 - INFO - Resuming from prime 532719977 (start_idx: 34000) from main file
+2025-08-12 18:08:51,363 - INFO - Merging 1 incremental files for pparts_temp_20250812_180850.parquet...
+2025-08-12 18:08:51,369 - INFO - Merge complete: 314 total rows (314 new)
+2025-08-12 18:08:51,369 - INFO - Final file: data/pparts_temp_20250812_180850.parquet
+2025-08-12 18:36:20,848 - INFO - No existing block files found, starting from first prime
+2025-08-12 18:36:20,868 - INFO - Resuming from prime 532719977 (start_idx: 34000) from main file
+2025-08-12 18:43:20,447 - INFO - No existing block files found, starting from first prime
+2025-08-12 18:43:20,472 - INFO - Resuming from prime 532719977 (start_idx: 34000) from main file
+2025-08-12 18:49:05,128 - INFO - No existing block files found, starting from first prime
+2025-08-12 18:49:05,146 - INFO - Resuming from prime 532719977 (start_idx: 34000) from main file
+2025-08-12 19:03:10,469 - INFO - No existing block files found, starting from first prime
+2025-08-12 19:03:10,474 - ERROR - Error reading parquet main file: LazyFrame is not subscriptable (aside from slicing)
+
+Use `select()` or `filter()` instead.
+2025-08-12 19:03:56,690 - INFO - No existing block files found, starting from first prime
+2025-08-12 19:03:56,716 - INFO - Resuming from prime 532719977 (start_idx: 34000) from main file
+2025-08-12 19:13:08,831 - INFO - No existing block files found, starting from first prime
+2025-08-12 19:13:08,849 - INFO - Resuming from prime 532719977 (start_idx: 34000) from main file
+2025-08-12 19:18:25,745 - INFO - Resuming from prime 530709623 (start_idx: 27886001) from block files
+2025-08-12 19:18:27,339 - INFO - Data written to run file: pparts_run_20250812_191827.parquet
+2025-08-12 19:18:27,339 - INFO - Batch size: 10008 rows
+2025-08-12 19:18:27,807 - INFO - Data written to run file: pparts_run_20250812_191827.parquet
+2025-08-12 19:18:27,807 - INFO - Batch size: 11946 rows
+2025-08-12 19:18:28,175 - INFO - Data written to run file: pparts_run_20250812_191828.parquet
+2025-08-12 19:18:28,175 - INFO - Batch size: 10041 rows
+2025-08-12 19:18:28,516 - INFO - Data written to run file: pparts_run_20250812_191828.parquet
+2025-08-12 19:18:28,516 - INFO - Batch size: 10058 rows
+2025-08-12 19:18:28,879 - INFO - Data written to run file: pparts_run_20250812_191828.parquet
+2025-08-12 19:18:28,879 - INFO - Batch size: 10081 rows
+2025-08-12 19:18:29,218 - INFO - Data written to run file: pparts_run_20250812_191829.parquet
+2025-08-12 19:18:29,218 - INFO - Batch size: 10023 rows
+2025-08-12 19:18:29,553 - INFO - Data written to run file: pparts_run_20250812_191829.parquet
+2025-08-12 19:18:29,553 - INFO - Batch size: 10075 rows
+2025-08-12 19:18:29,885 - INFO - Data written to run file: pparts_run_20250812_191829.parquet
+2025-08-12 19:18:29,885 - INFO - Batch size: 10125 rows
+2025-08-12 19:18:30,216 - INFO - Data written to run file: pparts_run_20250812_191830.parquet
+2025-08-12 19:18:30,216 - INFO - Batch size: 10091 rows
+2025-08-12 19:18:30,549 - INFO - Data written to run file: pparts_run_20250812_191830.parquet
+2025-08-12 19:18:30,549 - INFO - Batch size: 10168 rows
+2025-08-12 19:18:30,940 - INFO - Data written to run file: pparts_run_20250812_191830.parquet
+2025-08-12 19:18:30,940 - INFO - Batch size: 11855 rows
+2025-08-12 19:18:31,299 - INFO - Data written to run file: pparts_run_20250812_191831.parquet
+2025-08-12 19:18:31,299 - INFO - Batch size: 10225 rows
+2025-08-12 19:18:31,703 - INFO - Data written to run file: pparts_run_20250812_191831.parquet
+2025-08-12 19:18:31,703 - INFO - Batch size: 10103 rows
+2025-08-12 19:18:32,119 - INFO - Data written to run file: pparts_run_20250812_191832.parquet
+2025-08-12 19:18:32,120 - INFO - Batch size: 10111 rows
+2025-08-12 19:18:32,599 - INFO - Data written to run file: pparts_run_20250812_191832.parquet
+2025-08-12 19:18:32,599 - INFO - Batch size: 11957 rows
+2025-08-12 19:18:32,955 - INFO - Data written to run file: pparts_run_20250812_191832.parquet
+2025-08-12 19:18:32,955 - INFO - Batch size: 10213 rows
+2025-08-12 19:18:33,317 - INFO - Data written to run file: pparts_run_20250812_191833.parquet
+2025-08-12 19:18:33,317 - INFO - Batch size: 10067 rows
+2025-08-12 19:18:33,652 - INFO - Data written to run file: pparts_run_20250812_191833.parquet
+2025-08-12 19:18:33,652 - INFO - Batch size: 10240 rows
+2025-08-12 19:18:33,988 - INFO - Data written to run file: pparts_run_20250812_191833.parquet
+2025-08-12 19:18:33,988 - INFO - Batch size: 10084 rows
+2025-08-12 19:18:34,166 - INFO - Data written to run file: pparts_run_20250812_191834.parquet
+2025-08-12 19:18:34,166 - INFO - Batch size: 4009 rows
+2025-08-12 19:18:34,324 - INFO - Timing data saved to data/timing_debug_20250812_191834.parquet
+2025-08-12 19:18:34,324 - INFO - Timing stats saved to data/timing_debug_20250812_191834.txt
+2025-08-12 19:19:44,985 - INFO - Resuming from prime 530709623 (start_idx: 27886001) from block files
+2025-08-12 19:19:46,614 - INFO - Data written to run file: pparts_run_20250812_191946.parquet
+2025-08-12 19:19:46,614 - INFO - Batch size: 10008 rows
+2025-08-12 19:19:47,084 - INFO - Data written to run file: pparts_run_20250812_191947.parquet
+2025-08-12 19:19:47,084 - INFO - Batch size: 11946 rows
+2025-08-12 19:19:47,429 - INFO - Data written to run file: pparts_run_20250812_191947.parquet
+2025-08-12 19:19:47,430 - INFO - Batch size: 10041 rows
+2025-08-12 19:19:47,768 - INFO - Data written to run file: pparts_run_20250812_191947.parquet
+2025-08-12 19:19:47,768 - INFO - Batch size: 10058 rows
+2025-08-12 19:19:48,136 - INFO - Data written to run file: pparts_run_20250812_191948.parquet
+2025-08-12 19:19:48,136 - INFO - Batch size: 10081 rows
+2025-08-12 19:19:48,467 - INFO - Data written to run file: pparts_run_20250812_191948.parquet
+2025-08-12 19:19:48,467 - INFO - Batch size: 10023 rows
+2025-08-12 19:19:48,793 - INFO - Data written to run file: pparts_run_20250812_191948.parquet
+2025-08-12 19:19:48,793 - INFO - Batch size: 10075 rows
+2025-08-12 19:19:49,122 - INFO - Data written to run file: pparts_run_20250812_191949.parquet
+2025-08-12 19:19:49,122 - INFO - Batch size: 10125 rows
+2025-08-12 19:19:49,453 - INFO - Data written to run file: pparts_run_20250812_191949.parquet
+2025-08-12 19:19:49,453 - INFO - Batch size: 10091 rows
+2025-08-12 19:19:49,782 - INFO - Data written to run file: pparts_run_20250812_191949.parquet
+2025-08-12 19:19:49,782 - INFO - Batch size: 10168 rows
+2025-08-12 19:19:50,172 - INFO - Data written to run file: pparts_run_20250812_191950.parquet
+2025-08-12 19:19:50,172 - INFO - Batch size: 11855 rows
+2025-08-12 19:19:50,530 - INFO - Data written to run file: pparts_run_20250812_191950.parquet
+2025-08-12 19:19:50,530 - INFO - Batch size: 10225 rows
+2025-08-12 19:19:50,933 - INFO - Data written to run file: pparts_run_20250812_191950.parquet
+2025-08-12 19:19:50,933 - INFO - Batch size: 10103 rows
+2025-08-12 19:19:51,284 - INFO - Data written to run file: pparts_run_20250812_191951.parquet
+2025-08-12 19:19:51,284 - INFO - Batch size: 10111 rows
+2025-08-12 19:19:51,726 - INFO - Data written to run file: pparts_run_20250812_191951.parquet
+2025-08-12 19:19:51,727 - INFO - Batch size: 11957 rows
+2025-08-12 19:19:52,170 - INFO - Data written to run file: pparts_run_20250812_191952.parquet
+2025-08-12 19:19:52,170 - INFO - Batch size: 10213 rows
+2025-08-12 19:19:52,535 - INFO - Data written to run file: pparts_run_20250812_191952.parquet
+2025-08-12 19:19:52,535 - INFO - Batch size: 10067 rows
+2025-08-12 19:19:52,874 - INFO - Data written to run file: pparts_run_20250812_191952.parquet
+2025-08-12 19:19:52,874 - INFO - Batch size: 10240 rows
+2025-08-12 19:19:53,209 - INFO - Data written to run file: pparts_run_20250812_191953.parquet
+2025-08-12 19:19:53,209 - INFO - Batch size: 10084 rows
+2025-08-12 19:19:53,389 - INFO - Data written to run file: pparts_run_20250812_191953.parquet
+2025-08-12 19:19:53,389 - INFO - Batch size: 4009 rows
+2025-08-12 19:19:53,547 - INFO - Timing data saved to data/timing_debug_20250812_191953.parquet
+2025-08-12 19:19:53,547 - INFO - Timing stats saved to data/timing_debug_20250812_191953.txt

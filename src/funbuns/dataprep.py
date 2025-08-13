@@ -4,54 +4,107 @@ Data preparation module for prime power computations.
 
 import polars as pl
 from pathlib import Path
-from .utils import get_data_dir
+from .utils import get_data_dir, get_config
 
 
-def prepare_prime_powers(n, max_power=100):
+def prepare_prime_powers(n=None, max_power=None, use_bounded=True):
     """
-    Prepare prime powers data using polars lazy expressions.
+    Prepare prime powers data with intelligent overflow handling.
+    Uses configuration from pixi.toml [tool.funbuns] section.
     
     Args:
-        n: Generate prime powers for first n primes
-        max_power: Maximum power to compute (default: 100)
+        n: Generate prime powers for first n primes (default: from config largest_small_prime)
+        max_power: Maximum power to compute (default: from config max_power)
+        use_bounded: If True, use bounded approach (zeros for overflow)
         
     Returns:
         Path to saved parquet file
     """
-    from sage.all import prime_range
+    # Load configuration from pixi.toml
+    config = get_config()
     
-    print(f"Generating prime powers for first {n} primes (powers 1-{max_power})")
+    # Use config defaults if not provided
+    if n is None:
+        n = config.get("lim_sm_p", 100000)
+    if max_power is None:
+        max_power = config.get("max_power", 64)
     
-    # Get the first n primes
-    primes = list(prime_range(0, n))
+    filename = config.get("small_primes_filename", "small_primes.parquet")
+    from sage.all import prime_range, Integer
+    import math
+    
+    print(f"Generating prime powers for primes less than {n} (powers 1-{max_power})")
+    if use_bounded:
+        print("Using bounded approach - zeros for overflow values")
+    
+    # Get all primes less than the limit
+    primes = list(prime_range(n))
     actual_count = len(primes)
     
-    if actual_count == 0:
-        raise ValueError(f"No primes found up to {n}")
+    #When would this ever happen? It won't I'm commenting it out.
+    #if actual_count == 0:
+    #    raise ValueError(f"No primes found up to {n}")
     
     print(f"Found {actual_count} primes up to {n}, largest: {primes[-1]}")
     
-    # Create LazyFrame with primes in column "1" 
-    df = pl.LazyFrame({"1": primes})
+    # Create LazyFrame with just the prime values (column "1")
+    df = pl.LazyFrame({"1": primes}, schema={"1": pl.Int64})
     
-    # Generate expressions for p^k where k = 2 to max_power
-    expressions = []
-    for k in range(2, max_power + 1):
-        expressions.append(pl.col("1").pow(k).alias(str(k)))
+    # Use single lazy expression to compute all powers at once
+    int64_max = 2**63 - 1
     
-    # Add all power columns using lazy evaluation
-    df = df.with_columns(expressions)
+    # Build all power expressions
+    if use_bounded:
+        # Create expressions for all powers with overflow protection
+        power_expressions = [
+            pl.when(pl.col("1").pow(k) <= int64_max)
+            .then(pl.col("1").pow(k))
+            .otherwise(0)
+            .alias(str(k))
+            for k in range(2, max_power + 1)
+        ]
+    else:
+        # Create expressions for all powers without bounds checking
+        power_expressions = [
+            pl.col("1").pow(k).alias(str(k))
+            for k in range(2, max_power + 1)
+        ]
     
-    # Save to data directory
+    # Apply all power expressions in a single lazy operation
+    df = df.with_columns(power_expressions)
+    
+    # Calculate overflow statistics if using bounded approach (requires collection)
+    if use_bounded:
+        total_cells = len(primes) * (max_power - 1)  # Exclude column "1"
+        overflow_count = df.select([
+            pl.sum_horizontal([pl.col(str(k)).eq(0).sum() for k in range(2, max_power + 1)])
+        ]).collect().item()
+        safe_count = total_cells - overflow_count
+        
+        overflow_stats = {
+            "total_cells": total_cells,
+            "overflow_cells": overflow_count, 
+            "safe_cells": safe_count
+        }
+    else:
+        overflow_stats = {"total_cells": 0, "overflow_cells": 0, "safe_cells": 0}
+    
+    # Save to data directory with configured filename
     data_dir = get_data_dir()
     data_dir.mkdir(exist_ok=True)
     
-    output_file = data_dir / f"prime_powers_{actual_count}p_{max_power}pow.parquet"
+    output_file = data_dir / filename
     
-    print(f"Computing and saving to {output_file}...")
+    print(f"Saving to {output_file}...")
     
-    # Collect and save (this is where computation actually happens)
+    # Collect LazyFrame and save to parquet
     df.collect().write_parquet(output_file)
+    
+    if use_bounded:
+        print(f"\n📊 Overflow Statistics:")
+        print(f"  Total cells: {overflow_stats['total_cells']:,}")
+        print(f"  Safe cells: {overflow_stats['safe_cells']:,} ({overflow_stats['safe_cells']/overflow_stats['total_cells']*100:.1f}%)")
+        print(f"  Overflow cells: {overflow_stats['overflow_cells']:,} ({overflow_stats['overflow_cells']/overflow_stats['total_cells']*100:.1f}%)")
     
     print(f"Prime powers data saved: {output_file}")
     print(f"Columns: {actual_count} primes × {max_power} powers = {actual_count * max_power} total values")

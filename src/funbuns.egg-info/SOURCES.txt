@@ -2,7 +2,9 @@ README.md
 setup.py
 src/funbuns/__init__.py
 src/funbuns/__main__.py
+src/funbuns/alternate_core.py
 src/funbuns/core.py
+src/funbuns/dataprep.py
 src/funbuns/utils.py
 src/funbuns/viewer.py
 src/funbuns.egg-info/PKG-INFO

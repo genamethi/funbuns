@@ -81,12 +81,7 @@ We are doing a pure math thing in Diophantine equations.
 
 I am studying primes that are the sum of two prime powers. Let p be prime then, we ask how many partitions exist such that p = 2^m + q^n, where q is prime and m, n >= 1. Note that 2 is always the other prime base by parity, so we just default to writing that right off the bat.
 
-We want to a) We're going to use polars lazy expressions to do a lot of heavy lifting, but the goal is to compute for 2 billion primes if we can. Basically, we're going to see if we can get the 2^64 limit. Here's some of the design I have already decided on.
-
-While we can always use some of the lazy prime generators that Sage has on offer, we're going to have a data prep phase that seriously prepares for small primes. I'd say the first 10,000 primes is a good start. There's some values that will be relevant to have as columns for each prime.
-
-We'll get to those values as we go along, but let's motivate things a bit. Sometimes the data dictates the algorithm, sometimes there's a back and forth. Let's look at what we need to do for the algorithm first.
-
+We want to a) We're going to use polars lazy expressions to do a lot of heavy lifting, but the goal is to get to primes near 2^64. By the time we get there, I hope to be ready to be adapted to arbitrary precision with an interface for preserving Sage Integers within Polars dataframes. We're currently saving to a parquet file. There's more to say about where we're at. 
 
 ## Algorithm ##
 
@@ -139,9 +134,7 @@ That will be the log base for computing n_max for the large paradigm.
 
 So, we basically determine directly our values for m_i and n_i then we find the q_i that fits.
 
-This should be possible without any loops using try and except where necessary.
-
-I don't expect you'll be so familiar with sage and polars to get this right immediately.
+The loops that are currently in the code can be done away with in time, but for now, they are what they are.
 
 I know the no loop thing might seem naive even. But I do think that polars expressions plus sage's ETB, map_reduce and recursive enumerated sets give us a lot of power that let's avoid doing a lot of this in python.
 

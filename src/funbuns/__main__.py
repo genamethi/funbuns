@@ -3,44 +3,47 @@ Main entry point for prime power partition analysis.
 """
 
 import argparse
-import multiprocessing as mp
 import psutil
-from tqdm import tqdm
-from sage.all import *
-from .core import PPFeeder, PPProducer, PPConsumer
-from .utils import setup_logging, resume_p, append_data, get_config
+from .core import run_gen
+from .utils import setup_logging, get_config, setup_analysis_mode, generate_partition_summary
 from .dataprep import prepare_prime_powers
 from .viewer import generate_dashboard
+import polars as pl
 
 
-def worker(prime):
-    """
-    Worker function for multiprocessing.
-    
-    Args:
-        prime: Integer - prime to process
-        
-    Returns:
-        Polars DataFrame with partition results
-    """
-    producer = PPProducer()
-    return producer.process_prime(prime)
+
+
+
+
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Analyze prime power partitions p = 2^m + q^n')
+    parser = argparse.ArgumentParser(description='Analyze prime power partitions p = 2^m + q^n (default: resume from last prime)')
     parser.add_argument('-n', '--number', type=int, required=False,
                        help='Number of primes to analyze')
     parser.add_argument('--workers', type=int, default=None,
                        help='Number of worker processes (default: number of physical cores)')
-    parser.add_argument('--resume', action='store_true',
-                       help='Resume from previous progress')
+    parser.add_argument('--temp', action='store_true',
+                       help='Run analysis in temporary file (for experiments)')
+    parser.add_argument('--fresh', action='store_true',
+                       help='Start fresh by deleting existing data')
     parser.add_argument('--data-file', type=str, default=None,
                        help='Specify custom data file (overrides default)')
     parser.add_argument('--view', action='store_true',
                        help='Generate interactive dashboard from existing data')
     parser.add_argument('-p', '--prep', type=int, metavar='N',
                        help='Prepare prime powers data for first N primes (p^1 through p^100)')
+    parser.add_argument('-b', '--batch-size', type=int, default=1000,
+                       help='Number of primes per worker batch (default: 1000)')
+    parser.add_argument('-v', '--verbose', action='store_true',
+                       help='Enable verbose output for debugging and profiling')
+    parser.add_argument('--no-table', action='store_true',
+                       help='Disable small primes table optimization (use pure iterative method)')
+    parser.add_argument('--monolithic', action='store_true',
+                       help='Use single monolithic file instead of separate run files (overrides config)')
+
+    parser.add_argument('--show-runs', action='store_true',
+                       help='Show summary of all block files')
     
     args = parser.parse_args()
     
@@ -54,7 +57,15 @@ def main():
         prepare_prime_powers(args.prep)
         return
     
-    # Ensure -n is provided when not in view/prep mode
+    # Handle show-runs mode
+    if args.show_runs:
+        from .utils import show_run_files_summary
+        show_run_files_summary()
+        return
+    
+
+    
+    # Ensure -n is provided when not in view/prep/show-runs mode
     if args.number is None:
         parser.error("-n/--number is required when not using --view or --prep modes")
     
@@ -68,52 +79,26 @@ def main():
     
     setup_logging()
     
-    # Get configuration
+    # Get configuration and setup analysis mode
     config = get_config()
     buffer_size = config.get('buffer_size', 10000)
     
-    # Handle resume functionality
-    if args.resume:
-        try:
-            init_p = resume_p()
-        except Exception as e:
-            print(f"Resume failed: {e}")
-            return
+    # Setup analysis mode (handles temp, fresh, resume logic)
+    init_p, start_idx, append_func, use_separate_runs, data_file = setup_analysis_mode(args, config)
+    
+    print(f"Data mode: {'Separate run files' if use_separate_runs else 'Monolithic file'}")
+    if args.temp:
+        print(f"Running in temporary mode: {data_file}")
+    
+    # Run the analysis
+    use_table = not args.no_table  # Invert the flag since --no-table disables the table
+    run_gen(init_p, args.number, args.batch_size, cores, buffer_size, append_func, args.verbose, start_idx, use_table, use_separate_runs)
+    
+    # Show partition summary
+    if args.temp:
+        generate_partition_summary(data_file, verbose=args.verbose)
     else:
-        init_p = 2  # Start from first prime
-    
-    # Create feeder starting from resume point
-    feeder = PPFeeder(init_p)
-    
-    # Create work items (primes)
-    work_items = []
-    for _ in range(args.number):
-        prime = feeder.get_next_prime()
-        if prime is None:
-            break
-        work_items.append(prime)
-    
-    if not work_items:
-        print("No primes to process!")
-        return
-    
-    print(f"Processing {len(work_items)} primes starting from {work_items[0]}")
-    
-    # Create consumer to handle results
-    consumer = PPConsumer(buffer_size, append_data)
-    
-    # Process with multiprocessing and progress bar
-    with mp.Pool(cores) as pool:
-        with tqdm(total=len(work_items), desc="Prime partition", unit="prime") as pbar:
-            for result_df in pool.imap(worker, work_items):
-                consumer.add_result(result_df)
-                pbar.update(1)
-    
-    # Finalize any remaining results
-    consumer.finalize()
-    
-    print(f"\nCompleted processing {len(work_items)} primes")
-    print(f"Results saved to data/pparts.parquet")
+        generate_partition_summary(verbose=args.verbose)
 
 
 if __name__ == "__main__":
