@@ -18,11 +18,10 @@ class PPBatchProcessor:
     
 
     
-    def __init__(self, verbose: bool = False, use_table: bool = True):
+    def __init__(self, verbose: bool = False):
         """Initialize processor with results storage and small primes table."""
         self.results = []  # List of DataFrames to be concatenated by consumer
         self.timer = TimingCollector(verbose=verbose)
-        self.use_table = use_table
         # Log remainder tolerance for integer detection (near IEEE 754 machine epsilon)
         self.EPSILON = 1e-15  # Commented out - validation happens later
         
@@ -106,19 +105,19 @@ class PPBatchProcessor:
                 )
 
 
-def worker_batch(prime_batch, verbose=False, use_table=True):
+def worker_batch(prime_batch, verbose=False):
     """
     Module-level worker function for multiprocessing spawn compatibility.
     
     Args:
         prime_batch: List of primes to process
         verbose: Whether to enable verbose timing logging
-        use_table: Whether to use small primes table optimization
+
         
     Returns:
         Tuple of (DataFrame, timing_data)
     """
-    processor = PPBatchProcessor(verbose=verbose, use_table=use_table)
+    processor = PPBatchProcessor(verbose=verbose)
     result_df = processor.process_batch(prime_batch)
     return result_df, processor.timer.timings
 
@@ -232,7 +231,7 @@ class PPConsumer:
         self._flush_results()
 
 
-def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, verbose=False, start_idx=0, use_table=True, use_separate_runs=False):
+def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, verbose=False, start_idx=0, use_separate_runs=False):
     """
     Main analysis runner - handles all processing logic.
     
@@ -273,7 +272,7 @@ def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, ver
                     break
                 
                 # Process batch - returns (DataFrame, timing_data)
-                results_df, timing_data = pool.apply(worker_batch, (prime_batch, verbose, use_table))
+                results_df, timing_data = pool.apply(worker_batch, (prime_batch, verbose))
                 
                 # Collect timing data
                 all_timing_data.extend(timing_data)

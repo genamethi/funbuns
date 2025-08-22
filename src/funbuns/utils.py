@@ -9,10 +9,7 @@ from pathlib import Path
 import polars as pl
 import tomllib
 import time
-<<<<<<< HEAD
-=======
 import shutil
->>>>>>> 53189d8 (This again)
 from typing import Dict, List, Optional
 
 
@@ -180,11 +177,7 @@ def get_config():
         return {}
 
 
-<<<<<<< HEAD
-def resume_p(use_separate_runs: bool = False) -> tuple[int, int]:
-=======
 def resume_p(use_separate_runs: bool = False, verbose: bool = False) -> tuple[int, int]:
->>>>>>> 53189d8 (This again)
     """
     Get the last processed prime and start_idx from existing parquet data.
     
@@ -216,25 +209,15 @@ def resume_p(use_separate_runs: bool = False, verbose: bool = False) -> tuple[in
             
             df_scan = pl.scan_parquet(filepath).select("p")
         
-<<<<<<< HEAD
-        # Get both last prime and unique count (start_idx) in one operation
-        result = df_scan.select([
-            pl.col("p").last().alias("last_prime"),
-            pl.col("p").n_unique().alias("start_idx")
-        ]).collect()
-=======
         # Get both max prime and unique count (start_idx) in one operation
         result = df_scan.select([
             pl.col("p").max().alias("last_prime"),
             pl.col("p").n_unique().alias("start_idx")
         ]).collect()    
->>>>>>> 53189d8 (This again)
         
         last_prime = result["last_prime"].item()
         start_idx = result["start_idx"].item()
         
-<<<<<<< HEAD
-=======
         if verbose:
             print(f"🔍 DEBUG: Scan result - max_prime: {last_prime}, unique_count: {start_idx}")
             print(f"🔍 DEBUG: Data source: {'block files' if use_separate_runs else 'monolithic file'}")
@@ -244,7 +227,6 @@ def resume_p(use_separate_runs: bool = False, verbose: bool = False) -> tuple[in
                 if block_files:
                     print(f"🔍 DEBUG: Last block: {sorted(block_files)[-1].name}")
         
->>>>>>> 53189d8 (This again)
         if last_prime is None:
             logging.info("Parquet file is empty, starting from first prime")
             return (2, 0)
@@ -274,17 +256,11 @@ def append_data(df: pl.DataFrame, buffer_size: int = None, filepath=None, verbos
         use_separate_runs: If True, write to separate run files instead of monolithic file
     """
     if use_separate_runs:
-<<<<<<< HEAD
-        # Write directly to a new run file (no incremental merging needed)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_file = get_data_dir() / f"pparts_run_{timestamp}.parquet"
-=======
         # Write directly to a new run file in data/runs/ directory
         runs_dir = get_data_dir() / "runs"
         runs_dir.mkdir(exist_ok=True)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_file = runs_dir / f"pparts_run_{timestamp}.parquet"
->>>>>>> 53189d8 (This again)
         df.write_parquet(run_file)
         
         if verbose:
@@ -526,22 +502,14 @@ def setup_resume_mode(use_separate_runs, verbose):
     """
     if use_separate_runs:
         # Try to resume from block files first
-<<<<<<< HEAD
-        init_p, start_idx = resume_p(use_separate_runs=True)
-=======
         init_p, start_idx = resume_p(use_separate_runs=True, verbose=verbose)
->>>>>>> 53189d8 (This again)
         
         if init_p == 2 and start_idx == 0:
             # No block files exist, check for existing monolithic data
             data_file = get_default_data_file()
             if data_file.exists():
                 try:
-<<<<<<< HEAD
-                    init_p, start_idx = resume_p(use_separate_runs=False)
-=======
                     init_p, start_idx = resume_p(use_separate_runs=False, verbose=verbose)
->>>>>>> 53189d8 (This again)
                     print(f"Found existing monolithic data - resuming from prime {init_p} (index {start_idx})")
                     print("💡 Future runs will be saved as separate files for better fault tolerance")
                 except Exception as e:
@@ -556,11 +524,7 @@ def setup_resume_mode(use_separate_runs, verbose):
         data_file = get_default_data_file()
         if data_file.exists():
             try:
-<<<<<<< HEAD
-                init_p, start_idx = resume_p(use_separate_runs=False)
-=======
                 init_p, start_idx = resume_p(use_separate_runs=False, verbose=verbose)
->>>>>>> 53189d8 (This again)
                 print(f"Resuming from prime {init_p} (index {start_idx}) using monolithic file")
             except Exception as e:
                 print(f"Resume failed: {e}")
@@ -695,8 +659,6 @@ def generate_partition_summary(data_file=None, verbose=False):
         
     except Exception as e:
         print(f"Error generating partition summary: {e}")
-<<<<<<< HEAD
-=======
 
 
 def convert_runs_to_blocks_auto(target_prime_count: int = 500_000):
@@ -754,4 +716,3 @@ def convert_runs_to_blocks_auto(target_prime_count: int = 500_000):
         print(f"    - Detected overlaps between adjacent blocks ({overlaps} overlaps reported).")
         print("      Recommendation: verify last/first prime boundaries and block filenames; consolidate overlapping blocks.")
     print("  🛑 Run files were kept for investigation.")
->>>>>>> 53189d8 (This again)

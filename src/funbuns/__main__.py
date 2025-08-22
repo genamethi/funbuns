@@ -37,11 +37,6 @@ def main():
                        help='Number of primes per worker batch (default: 1000)')
     parser.add_argument('-v', '--verbose', action='store_true',
                        help='Enable verbose output for debugging and profiling')
-<<<<<<< HEAD
-    parser.add_argument('--no-table', action='store_true',
-                       help='Disable small primes table optimization (use pure iterative method)')
-=======
->>>>>>> 53189d8 (This again)
     parser.add_argument('--monolithic', action='store_true',
                        help='Use single monolithic file instead of separate run files (overrides config)')
 
@@ -93,9 +88,7 @@ def main():
     if args.temp:
         print(f"Running in temporary mode: {data_file}")
     
-    # Run the analysis
-    use_table = not args.no_table  # Invert the flag since --no-table disables the table
-    run_gen(init_p, args.number, args.batch_size, cores, buffer_size, append_func, args.verbose, start_idx, use_table, use_separate_runs)
+    run_gen(init_p, args.number, args.batch_size, cores, buffer_size, append_func, args.verbose, start_idx,  use_separate_runs)
     
     # Show partition summary
     if args.temp:
