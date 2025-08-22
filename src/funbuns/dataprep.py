@@ -98,7 +98,11 @@ def prepare_prime_powers(n=None, max_power=None, use_bounded=True):
     print(f"Saving to {output_file}...")
     
     # Collect LazyFrame and save to parquet
+<<<<<<< HEAD
     df.collect().write_parquet(output_file)
+=======
+    df.collect().write_parquet(output_file, statistics={"max": True})
+>>>>>>> 53189d8 (This again)
     
     if use_bounded:
         print(f"\n📊 Overflow Statistics:")

@@ -37,8 +37,11 @@ def main():
                        help='Number of primes per worker batch (default: 1000)')
     parser.add_argument('-v', '--verbose', action='store_true',
                        help='Enable verbose output for debugging and profiling')
+<<<<<<< HEAD
     parser.add_argument('--no-table', action='store_true',
                        help='Disable small primes table optimization (use pure iterative method)')
+=======
+>>>>>>> 53189d8 (This again)
     parser.add_argument('--monolithic', action='store_true',
                        help='Use single monolithic file instead of separate run files (overrides config)')
 

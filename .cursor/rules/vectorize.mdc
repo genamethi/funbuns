@@ -1,0 +1,9 @@
+---
+alwaysApply: true
+---
+We are seeking to avoid explicit and implicit python loops.
+The exception will be cases where they are need to create generators (rare), for the orchestration of multiprocessing at different levels, and potentially for low cost user facing code.
+This could be called a "no loops" rule, and I think I'd prefer that, but to be honest, it's just that I want to avoid Python loops.
+If we have a list that we can slice intelligently, or break up and yield piece by piece this is great.
+Looping scalarwise is a sign that we need to retool our data pipeline.
+If we need to change our data pipeline, we have a lot of options.

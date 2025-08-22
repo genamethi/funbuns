@@ -1071,3 +1071,24 @@ Use `select()` or `filter()` instead.
 2025-08-12 19:19:53,389 - INFO - Batch size: 4009 rows
 2025-08-12 19:19:53,547 - INFO - Timing data saved to data/timing_debug_20250812_191953.parquet
 2025-08-12 19:19:53,547 - INFO - Timing stats saved to data/timing_debug_20250812_191953.txt
+<<<<<<< HEAD
+=======
+2025-08-12 19:24:01,464 - INFO - Resuming from prime 530709623 (start_idx: 27886001) from block files
+2025-08-12 20:05:41,490 - INFO - Resuming from prime 530709623 (start_idx: 27886001) from block files
+2025-08-12 21:02:37,182 - INFO - Resuming from prime 728478683 (start_idx: 30611000) from block files
+2025-08-12 21:03:20,931 - INFO - Resuming from prime 728478683 (start_idx: 30611000) from block files
+2025-08-12 21:04:04,608 - INFO - Resuming from prime 728478683 (start_idx: 30611000) from block files
+2025-08-12 21:10:35,764 - INFO - Resuming from prime 733302529 (start_idx: 30611000) from block files
+2025-08-12 21:17:15,601 - INFO - Resuming from prime 522960521 (start_idx: 27500000) from block files
+2025-08-12 21:17:17,042 - INFO - Data written to run file: pparts_run_20250812_211717.parquet
+2025-08-12 21:17:17,042 - INFO - Batch size: 2011 rows
+2025-08-12 21:17:17,048 - INFO - Timing data saved to data/timing_debug_20250812_211717.parquet
+2025-08-12 21:17:17,048 - INFO - Timing stats saved to data/timing_debug_20250812_211717.txt
+2025-08-12 21:20:59,765 - INFO - Resuming from prime 522960521 (start_idx: 27500000) from block files
+2025-08-13 16:32:14,838 - INFO - Resuming from prime 522960521 (start_idx: 27500000) from block files
+2025-08-13 16:44:45,056 - INFO - Resuming from prime 522960521 (start_idx: 27500000) from block files
+2025-08-13 17:36:54,368 - INFO - Resuming from prime 718711759 (start_idx: 33290000) from block files
+2025-08-13 21:14:50,524 - INFO - Resuming from prime 718711759 (start_idx: 33290000) from block files
+2025-08-18 03:40:54,576 - INFO - Resuming from prime 725420401 (start_idx: 33290000) from block files
+2025-08-18 12:18:39,814 - INFO - Resuming from prime 725420401 (start_idx: 33290000) from block files
+>>>>>>> 53189d8 (This again)

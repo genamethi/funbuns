@@ -9,6 +9,10 @@ from pathlib import Path
 import polars as pl
 import tomllib
 import time
+<<<<<<< HEAD
+=======
+import shutil
+>>>>>>> 53189d8 (This again)
 from typing import Dict, List, Optional
 
 
@@ -176,7 +180,11 @@ def get_config():
         return {}
 
 
+<<<<<<< HEAD
 def resume_p(use_separate_runs: bool = False) -> tuple[int, int]:
+=======
+def resume_p(use_separate_runs: bool = False, verbose: bool = False) -> tuple[int, int]:
+>>>>>>> 53189d8 (This again)
     """
     Get the last processed prime and start_idx from existing parquet data.
     
@@ -208,15 +216,35 @@ def resume_p(use_separate_runs: bool = False) -> tuple[int, int]:
             
             df_scan = pl.scan_parquet(filepath).select("p")
         
+<<<<<<< HEAD
         # Get both last prime and unique count (start_idx) in one operation
         result = df_scan.select([
             pl.col("p").last().alias("last_prime"),
             pl.col("p").n_unique().alias("start_idx")
         ]).collect()
+=======
+        # Get both max prime and unique count (start_idx) in one operation
+        result = df_scan.select([
+            pl.col("p").max().alias("last_prime"),
+            pl.col("p").n_unique().alias("start_idx")
+        ]).collect()    
+>>>>>>> 53189d8 (This again)
         
         last_prime = result["last_prime"].item()
         start_idx = result["start_idx"].item()
         
+<<<<<<< HEAD
+=======
+        if verbose:
+            print(f"🔍 DEBUG: Scan result - max_prime: {last_prime}, unique_count: {start_idx}")
+            print(f"🔍 DEBUG: Data source: {'block files' if use_separate_runs else 'monolithic file'}")
+            if use_separate_runs:
+                block_files = list((data_dir / "blocks").glob("pp_b*.parquet"))
+                print(f"🔍 DEBUG: Found {len(block_files)} block files")
+                if block_files:
+                    print(f"🔍 DEBUG: Last block: {sorted(block_files)[-1].name}")
+        
+>>>>>>> 53189d8 (This again)
         if last_prime is None:
             logging.info("Parquet file is empty, starting from first prime")
             return (2, 0)
@@ -246,9 +274,17 @@ def append_data(df: pl.DataFrame, buffer_size: int = None, filepath=None, verbos
         use_separate_runs: If True, write to separate run files instead of monolithic file
     """
     if use_separate_runs:
+<<<<<<< HEAD
         # Write directly to a new run file (no incremental merging needed)
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         run_file = get_data_dir() / f"pparts_run_{timestamp}.parquet"
+=======
+        # Write directly to a new run file in data/runs/ directory
+        runs_dir = get_data_dir() / "runs"
+        runs_dir.mkdir(exist_ok=True)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_file = runs_dir / f"pparts_run_{timestamp}.parquet"
+>>>>>>> 53189d8 (This again)
         df.write_parquet(run_file)
         
         if verbose:
@@ -490,14 +526,22 @@ def setup_resume_mode(use_separate_runs, verbose):
     """
     if use_separate_runs:
         # Try to resume from block files first
+<<<<<<< HEAD
         init_p, start_idx = resume_p(use_separate_runs=True)
+=======
+        init_p, start_idx = resume_p(use_separate_runs=True, verbose=verbose)
+>>>>>>> 53189d8 (This again)
         
         if init_p == 2 and start_idx == 0:
             # No block files exist, check for existing monolithic data
             data_file = get_default_data_file()
             if data_file.exists():
                 try:
+<<<<<<< HEAD
                     init_p, start_idx = resume_p(use_separate_runs=False)
+=======
+                    init_p, start_idx = resume_p(use_separate_runs=False, verbose=verbose)
+>>>>>>> 53189d8 (This again)
                     print(f"Found existing monolithic data - resuming from prime {init_p} (index {start_idx})")
                     print("💡 Future runs will be saved as separate files for better fault tolerance")
                 except Exception as e:
@@ -512,7 +556,11 @@ def setup_resume_mode(use_separate_runs, verbose):
         data_file = get_default_data_file()
         if data_file.exists():
             try:
+<<<<<<< HEAD
                 init_p, start_idx = resume_p(use_separate_runs=False)
+=======
+                init_p, start_idx = resume_p(use_separate_runs=False, verbose=verbose)
+>>>>>>> 53189d8 (This again)
                 print(f"Resuming from prime {init_p} (index {start_idx}) using monolithic file")
             except Exception as e:
                 print(f"Resume failed: {e}")
@@ -647,3 +695,63 @@ def generate_partition_summary(data_file=None, verbose=False):
         
     except Exception as e:
         print(f"Error generating partition summary: {e}")
+<<<<<<< HEAD
+=======
+
+
+def convert_runs_to_blocks_auto(target_prime_count: int = 500_000):
+    """
+    Automatically integrate run files into blocks, then run integrity checks.
+    If checks pass: delete run files. If checks fail: keep run files and print guidance.
+    """
+    data_dir = get_data_dir()
+    runs = (data_dir / "runs").glob("*.parquet") if (data_dir / "runs").exists() else []
+    run_count = len(list((data_dir / "runs").glob("*.parquet"))) if (data_dir / "runs").exists() else 0
+    if run_count == 0:
+        return
+    print(f"\n🔄 Integrating {run_count} run files into blocks...")
+
+    # Integrate without deleting runs first
+    from .run_ingester import integrate_runs_into_blocks
+    worked = integrate_runs_into_blocks(target_prime_count=target_prime_count, verbose=True, delete_run_files=False)
+    if not worked:
+        print("No run files integrated. Skipping checks.")
+        return
+
+    # Integrity checks (lazy imports to avoid cycles)
+    from .data_integrity import detect_overlaps_between_blocks, detect_duplicates_in_block
+    from .block_catalog import list_block_files
+
+    files = list_block_files()
+    dup_total = 0
+    for f in files:
+        try:
+            dup_total += detect_duplicates_in_block(f)
+        except Exception:
+            # If a file fails to read, treat as warning condition
+            dup_total += 0
+
+    overlap_df = detect_overlaps_between_blocks()
+    overlaps = int(overlap_df.height)
+
+    if dup_total == 0 and overlaps == 0:
+        # Safe to delete run files
+        runs_dir = data_dir / "runs"
+        removed = 0
+        for rf in runs_dir.glob("*.parquet"):
+            rf.unlink()
+            removed += 1
+        print(f"  ✅ Integrity OK. Removed {removed} run files.")
+        return
+
+    # Failure path: keep run files and provide guidance
+    print("  ❌ Integrity check failed after integration.")
+    if dup_total > 0:
+        print(f"    - Detected {dup_total} duplicate rows across blocks (by keys ['p','m_k','n_k','q_k']).")
+        print("      Recommendation: re-run ingestion with dedup (already enforced). If duplicates persist,")
+        print("      inspect the offending blocks; consider regenerating the affected range.")
+    if overlaps > 0:
+        print(f"    - Detected overlaps between adjacent blocks ({overlaps} overlaps reported).")
+        print("      Recommendation: verify last/first prime boundaries and block filenames; consolidate overlapping blocks.")
+    print("  🛑 Run files were kept for investigation.")
+>>>>>>> 53189d8 (This again)

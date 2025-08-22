@@ -10,8 +10,6 @@ Following the algorithm outlined in sketch.md:
 
 from sage.all import *
 import polars as pl
-from typing import Optional
-from itertools import islice
 from .utils import TimingCollector
 
 
@@ -309,6 +307,11 @@ def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, ver
     print(f"\nCompleted processing {primes_processed} primes in {batches_processed} batches")
     print(f"Results merged and saved")
     
+    # Automatically convert run files to blocks if using separate runs
+    if use_separate_runs:
+        from .utils import convert_runs_to_blocks_auto
+        convert_runs_to_blocks_auto()
+
     if verbose and all_timing_data:
         print(f"Timing data collected: {len(all_timing_data)} operations")
 
