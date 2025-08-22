@@ -2,3 +2,4 @@
 .pixi
 data/*
 error.log
+__pycache__

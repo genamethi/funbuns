@@ -52,7 +52,9 @@ def integrate_runs_into_blocks(target_prime_count: int = 500_000, verbose: bool 
             print("No run files found to integrate.")
         return False
 
-    data = data.sort("p")
+    # Ensure schema normalization (in case of any stray columns)
+    keep_cols = [c for c in ["p","m_k","n_k","q_k"] if c in data.columns]
+    data = data.select(keep_cols).sort("p")
     data = _dedup(data)
 
     bdir = blocks_dir()
@@ -121,7 +123,8 @@ def integrate_runs_into_blocks(target_prime_count: int = 500_000, verbose: bool 
             f.unlink()
 
     if verbose:
-        print(f"Integrated {data.select(pl.col('p').n_unique()).item():,} primes from runs into blocks.")
+        total_integrated = int(data.select(pl.col('p').n_unique()).item())
+        print(f"Integrated {total_integrated:,} primes from runs into blocks.")
     return True
 
 

@@ -259,8 +259,10 @@ def append_data(df: pl.DataFrame, buffer_size: int = None, filepath=None, verbos
         # Write directly to a new run file in data/runs/ directory
         runs_dir = get_data_dir() / "runs"
         runs_dir.mkdir(exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        run_file = runs_dir / f"pparts_run_{timestamp}.parquet"
+        # Use microseconds and pid to avoid filename collisions within the same second
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        pid = os.getpid()
+        run_file = runs_dir / f"pparts_run_{timestamp}_{pid}.parquet"
         df.write_parquet(run_file)
         
         if verbose:
