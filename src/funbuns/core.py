@@ -8,101 +8,111 @@ Following the algorithm outlined in sketch.md:
 - Use try/except pattern to avoid unnecessary computations
 """
 
-from sage.all import *
+from sage.all import prime_range, Primes, next_prime
 import polars as pl
-from .utils import TimingCollector
-
+import numpy as np
+from itertools import batched
+from .utils import TimingCollector, convert_runs_to_blocks_auto, PARTITION_SCHEMA, PARTITION_DISTRIBUTION
 
 class PPBatchProcessor:
-    """Worker class for processing prime batches in multiprocessing."""
-    
-
+    """Worker class for processing prime batches using pre-allocated arrays."""
     
     def __init__(self, verbose: bool = False):
-        """Initialize processor with results storage and small primes table."""
-        self.results = []  # List of DataFrames to be concatenated by consumer
-        self.timer = TimingCollector(verbose=verbose)
+        """Initialize processor with timing collector."""
+        # Remove DataFrame storage - using arrays now
+        if verbose:  # Use verbose flag instead of undefined debug_mode
+            self.timer = TimingCollector(verbose=verbose)
+        #Below is from small primes table implementation, currently excised.
         # Log remainder tolerance for integer detection (near IEEE 754 machine epsilon)
-        self.EPSILON = 1e-15  # Commented out - validation happens later
+        #self.EPSILON = 1e-15  
         
         # Load small primes table using utils function (always load for LSP constraint)
-        from .utils import get_small_primes_table
-        self.small_primes_table, self.lsp = get_small_primes_table()
+        #from .utils import get_small_primes_table
+        #self.small_primes_table, self.lsp = get_small_primes_table()
     
-    def pp_parts(self, p):
+    def _process_prime_to_array(self, p):
         """
-        Find all partitions of prime p as p = 2^m + q^n and append DataFrames to results.
-        Workers drop DataFrames - consumer handles concatenation.
+        Process single prime, writing results directly to pre-allocated array.
         
         Args:
             p: Integer (SageMath) - the prime to decompose  
         """
-        zero_df = pl.DataFrame(
-            [(int(p), 0, 0, 0)],
-            schema={'p': pl.Int64, 'm': pl.Int64, 'n': pl.Int64, 'q': pl.Int64},
-            orient='row'
-        )
         # Handle special cases for p = 2, 3
         if p == 2 or p == 3:
-            self.results.append(zero_df)
+            self._write_zero_row(int(p))
             return
-        
-        max_m = p.exact_log(2)  # floor(log_2(p))
-        iteration_results = []
-        results_before = len(self.results)  # Track if we add any DataFrames
-
-        with self.timer.time_operation("iterative_method", prime=int(p)):
-
-            two_i = 1
-
-            for m_i in range(1, max_m + 1):
-                two_i <<= 1
-                q_cand_i = p - two_i
-                
-                (pbase, pexp) = q_cand_i.is_prime_power(proof=False, get_data=True)
-
-                if pexp != 0:
-                    iteration_results.append((int(p), m_i, pexp, int(pbase)))
             
-            iteration_df = pl.DataFrame(
-                iteration_results,
-                schema={'p': pl.Int64, 'm': pl.Int64, 'n': pl.Int64, 'q': pl.Int64},
-                orient='row'
-            )
-            if iteration_results:
-                self.results.append(iteration_df)
+        max_m = p.exact_log(2)  # floor(log_2(p))
+        found_partition = False
+        two_i = 1
         
-        # Check if we added any DataFrames for this prime
-        if len(self.results) == results_before: 
-            self.results.append(zero_df)
+        for m_i in range(1, max_m + 1):
+            two_i <<= 1
+            q_cand_i = p - two_i
+            
+            (pbase, pexp) = q_cand_i.is_prime_power(proof=False, get_data=True)
+            
+            if pexp != 0:
+                self._write_partition_row(int(p), m_i, pexp, int(pbase))
+                found_partition = True
+        
+        # Add zero row if no partitions found
+        if not found_partition:
+            self._write_zero_row(int(p))
+    
+    def _write_zero_row(self, prime):
+        """Write zero partition row to array."""
+        if self.current_row >= len(self.results_array):
+            self._grow_array()
+        
+        row = self.current_row
+        self.results_array[row] = [prime, 0, 0, 0]
+        self.current_row += 1
+    
+    def _write_partition_row(self, prime, m, n, q):
+        """Write partition row to array."""
+        if self.current_row >= len(self.results_array):
+            self._grow_array()
+            
+        row = self.current_row
+        self.results_array[row] = [prime, m, n, q]
+        self.current_row += 1
+    
+    def _grow_array(self):
+        """Double the array size when needed."""
+        old_size = len(self.results_array)
+        new_size = old_size * 2
+        new_array = np.zeros((new_size, 4), dtype=np.int64)
+        new_array[:self.current_row] = self.results_array[:self.current_row]
+        self.results_array = new_array
 
     
     def process_batch(self, prime_batch):
         """
-        Process a batch of primes to find prime power partitions.
+        Process a batch of primes using pre-allocated array.
         
         Args:
             prime_batch: List of primes to process
             
         Returns:
-            Single Polars DataFrame with all partition results
+            NumPy array with partition results [p, m, n, q]
         """
-        with self.timer.time_operation("process_batch", batch_size=len(prime_batch)):
-            self.results.clear()  # Reset for new batch (list of DataFrames)
-            
-            for prime in prime_batch:
-                with self.timer.time_operation("single_prime", prime=int(prime)):
-                    self.pp_parts(Integer(prime))
-            
-            # Concatenate all DataFrames from this batch
-            if self.results:
-                with self.timer.time_operation("batch_concat", num_dataframes=len(self.results)):
-                    return pl.concat(self.results)
-            else:
-                # Return empty DataFrame with correct schema
-                return pl.DataFrame(
-                    schema={'p': pl.Int64, 'm': pl.Int64, 'n': pl.Int64, 'q': pl.Int64}
-                )
+        batch_size = len(prime_batch)
+        
+        # Estimate initial array size using empirical distribution
+        # With 10k batch size and 1.7 avg rows per prime, this is very stable
+        estimated_rows = int(batch_size * PARTITION_DISTRIBUTION['avg_rows_per_prime'] * 1.2)  # 20% buffer
+        
+        # Initialize pre-allocated array
+        self.results_array = np.zeros((estimated_rows, 4), dtype=np.int64)
+        self.current_row = 0
+        
+        # Process each prime directly to array
+        for prime in prime_batch:
+            self._process_prime_to_array(prime)
+        
+        # Return only the used portion
+        return self.results_array[:self.current_row]
 
 
 def worker_batch(prime_batch, verbose=False):
@@ -118,8 +128,22 @@ def worker_batch(prime_batch, verbose=False):
         Tuple of (DataFrame, timing_data)
     """
     processor = PPBatchProcessor(verbose=verbose)
-    result_df = processor.process_batch(prime_batch)
-    return result_df, processor.timer.timings
+    result_array = processor.process_batch(prime_batch)
+    
+    # Convert raw array results to DataFrame once per worker
+    if result_array.size > 0:
+        result_df = pl.DataFrame(
+            result_array,
+            schema=PARTITION_SCHEMA,
+            orient='row'
+        )
+    else:
+        # Return empty DataFrame with correct schema
+        result_df = pl.DataFrame(schema=PARTITION_SCHEMA)
+    
+    # Return timing data if debug mode is enabled
+    timing_data = processor.timer.timings if hasattr(processor, 'timer') else []
+    return result_df, timing_data
 
 
 class PPBatchFeeder:
@@ -157,23 +181,17 @@ class PPBatchFeeder:
             
         if verbose:
             print(f"Verbose: Getting {num_primes} primes from {start_prime} to {final_prime}...")
-        p_list = prime_range(start_prime, final_prime + 1)
-        
-        # Create Series and reshape into batches
-        if verbose:
-            print(f"Verbose: Reshaping into {self.num_batches} batches of {batch_size} primes...")
-        primes_series = pl.Series("prime", p_list)
-        self.batched_series = primes_series.reshape((self.num_batches, batch_size))
-        
-        if verbose:
-            print(f"Verbose: Created {self.num_batches} batches ready for processing")
+        self.p_list = prime_range(start_prime, final_prime + 1)
+
     
     def generate_batches(self):
-        """Generate batches by iterating through reshaped Series rows."""
-        for batch_array in self.batched_series:
+        """Generate batches by iterating through batched tuples."""
+        for batch_tuple in batched(self.p_list, self.batch_size):
             # Convert Array to Python list for worker compatibility
-            batch = batch_array.to_list()
+            batch = list(batch_tuple)
             yield batch
+
+
 
 
 class PPConsumer:
@@ -211,13 +229,8 @@ class PPConsumer:
         if not self.df_buffer:
             return
         
-        # Concatenate all DataFrames and rename columns to match expected schema
-        combined_df = pl.concat(self.df_buffer).rename({
-            'p': 'p',
-            'm': 'm_k', 
-            'n': 'n_k',
-            'q': 'q_k'
-        })
+        # Concatenate all DataFrames
+        combined_df = pl.concat(self.df_buffer)
         
         # Call save callback with buffer_size for logging control
         self.save_callback(combined_df, self.buffer_size)
@@ -231,7 +244,7 @@ class PPConsumer:
         self._flush_results()
 
 
-def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, verbose=False, start_idx=0, use_separate_runs=False):
+def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, verbose=False, start_idx=0):
     """
     Main analysis runner - handles all processing logic.
     
@@ -258,8 +271,8 @@ def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, ver
     # Set spawn method to avoid fork issues
     mp.set_start_method('spawn', force=True)
     
-    # Initialize timing collection
-    all_timing_data = []
+    ## Initialize timing collection
+    #all_timing_data = []
     
     # Process with multiprocessing and progress bar
     with mp.Pool(cores) as pool:
@@ -271,11 +284,13 @@ def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, ver
                 if not prime_batch:  # Empty batch means we're done
                     break
                 
-                # Process batch - returns (DataFrame, timing_data)
-                results_df, timing_data = pool.apply(worker_batch, (prime_batch, verbose))
+                # Process  batch - returns (DataFrame, timing_data)
+                #Reimplement with more robust profiling: results_df , timing_data = pool.apply(worker_batch, (prime_batch, verbose))
+                results_df, all_timing_data = pool.apply(worker_batch, (prime_batch, verbose))
+                
                 
                 # Collect timing data
-                all_timing_data.extend(timing_data)
+                #all_timing_data.extend(timing_data)
                 
                 # Pass DataFrame directly to consumer
                 consumer.add_results(results_df)
@@ -307,9 +322,7 @@ def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, ver
     print(f"Results merged and saved")
     
     # Automatically convert run files to blocks if using separate runs
-    if use_separate_runs:
-        from .utils import convert_runs_to_blocks_auto
-        convert_runs_to_blocks_auto()
+    convert_runs_to_blocks_auto()
 
     if verbose and all_timing_data:
         print(f"Timing data collected: {len(all_timing_data)} operations")

@@ -22,11 +22,11 @@ buffer_size = 10000
 small_primes_filename = "small_primes.parquet"
 lim_sm_p = 100000
 max_power = 64
-use_separate_runs = true
 
 [tool.funbuns.directories]
 data_dir = "data"
-blocks_dir = "data"
+runs_dir = "data/runs"
+blocks_dir = "data/blocks"
 backup_dir = "data/backups"
 temp_dir = "data/tmp"
 

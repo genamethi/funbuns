@@ -257,21 +257,38 @@ class BlockManager:
             print(f"  📈 Total: {total_rows:,} rows, {unique_primes:,} unique primes")
             print(f"  📏 Range: {min_prime:,} to {max_prime:,}")
             
-            # Partition frequency analysis using glob pattern
+            # Partition frequency analysis using batched processing
             print("  🔢 Partition frequency distribution:")
+            print("    Processing blocks in batches...")
             
-            prime_partition_counts = pl.scan_parquet(pattern).group_by("p").agg([
-                pl.len().alias("total_entries"),
-                pl.col("m_k").filter(pl.col("m_k") > 0).len().alias("actual_partitions")
-            ]).collect()
+            # Process blocks in batches to avoid memory issues
+            batch_size = 50
+            all_partition_counts = {}
             
-            partition_counts = prime_partition_counts.group_by("actual_partitions").agg([
-                pl.len().alias("prime_count")
-            ]).sort("actual_partitions")
+            for i in range(0, len(files), batch_size):
+                batch_files = files[i:i+batch_size]
+                batch_pattern = [str(f) for f in batch_files]
+                
+                try:
+                    batch_partition_counts = pl.scan_parquet(batch_pattern).group_by("p").agg([
+                        (pl.col("q_k") > 0).sum().alias("actual_partitions")
+                    ]).group_by("actual_partitions").agg([
+                        pl.len().alias("prime_count")
+                    ]).collect()
+                    
+                    # Accumulate counts
+                    for row in batch_partition_counts.iter_rows(named=True):
+                        pc = row["actual_partitions"]
+                        count = row["prime_count"]
+                        all_partition_counts[pc] = all_partition_counts.get(pc, 0) + count
+                        
+                except Exception as e:
+                    print(f"    ⚠️  Error processing batch {i//batch_size + 1}: {e}")
+                    continue
             
-            for row in partition_counts.iter_rows(named=True):
-                pc = row["actual_partitions"] 
-                prime_count = row["prime_count"]
+            # Display results
+            for pc in sorted(all_partition_counts.keys()):
+                prime_count = all_partition_counts[pc]
                 percentage = (prime_count / unique_primes) * 100
                 print(f"    {pc:3d} partitions: {prime_count:,} primes ({percentage:.1f}%)")
                 
@@ -350,35 +367,7 @@ class BlockManager:
         # Create new blocks with the new organization
         self.convert_runs_to_blocks(target_prime_count=new_prime_count, dry_run=dry_run)
 
-    def audit_boundaries(self) -> pl.DataFrame:
-        """Audit block boundaries using next_prime(max_prev) continuity.
-
-        Returns a DataFrame with columns:
-          idx, file, block_num, min_p, max_p, expected_prev_next, status
-        where status is 'ok' or 'gap'.
-        """
-        infos = sorted_blocks_by_data()
-        rows = []
-        prev_max = None
-        for idx, info in enumerate(infos):
-            exp = None
-            status = 'ok'
-            if prev_max is not None and info.min_prime is not None:
-                exp = int(next_prime(int(prev_max)))
-                if info.min_prime != exp:
-                    status = 'gap'
-            rows.append({
-                'idx': idx + 1,
-                'file': info.path.name,
-                'block_num': info.block_num,
-                'min_p': info.min_prime,
-                'max_p': info.max_prime,
-                'expected_prev_next': exp,
-                'status': status,
-            })
-            if info.max_prime is not None:
-                prev_max = info.max_prime
-        return pl.DataFrame(rows)
+    
 
     def _lazy_unique_sorted_primes(self) -> pl.LazyFrame:
         bdir = self.blocks_dir
@@ -487,174 +476,6 @@ class BlockManager:
         print(f"  ✅ Deleted {len(to_delete)} blocks; backup at {backup_blocks_dir}")
         return len(to_delete)
 
-    def rebuild_blocks_prefix(self, target_prime_count: int = 500_000, include_runs: bool = True, include_monolithic: bool = True):
-        """Rebuild all blocks from the union of existing blocks (and runs) to enforce prefix property.
-
-        Steps:
-        - Load union of data lazily from blocks (+ runs if requested)
-        - Deduplicate by (p,m_k,n_k,q_k) and sort by p
-        - Backup existing blocks, clear them
-        - Emit new blocks of target_prime_count unique primes each, naming by content max p
-        - Run a prefix check at the end
-        """
-        print(f"🔄 Rebuilding blocks from union (target {target_prime_count:,} primes per block)", flush=True)
-        block_files = list(self.blocks_dir.glob('*.parquet'))
-        run_files = list(self.runs_dir.glob('*.parquet')) if include_runs and self.runs_dir.exists() else []
-        mono_file = get_default_data_file() if include_monolithic else None
-        if not block_files and not run_files and not (mono_file and mono_file.exists()):
-            print("  ❌ No input data found in blocks/ or runs/ to rebuild from", flush=True)
-            return
-
-        # Build file list
-        print(f"  📁 Sources: {len(block_files)} blocks, {len(run_files)} runs, monolithic: {mono_file.exists() if mono_file else False}", flush=True)
-
-        # Show current prefix summary up front (always visible)
-        infos0 = sorted_blocks_by_data()
-        cum0 = 0
-        P0 = Primes(proof=False)
-        rows0 = []
-        prev_max0 = None
-        gaps0 = []
-        for info in infos0:
-            uniq = info.num_unique_primes or 0
-            cum0 += uniq
-            exp = int(P0.unrank(cum0 - 1)) if cum0 > 0 else None
-            rows0.append({'file': info.path.name, 'min_p': info.min_prime, 'max_p': info.max_prime, 'unique_p': uniq, 'cum_unique_p': cum0, 'expected_max_p': exp})
-            if prev_max0 is not None and info.min_prime is not None and info.min_prime > prev_max0:
-                gaps0.append((prev_max0, info.min_prime))
-            if info.max_prime is not None:
-                prev_max0 = info.max_prime
-        df0 = pl.DataFrame(rows0) if rows0 else pl.DataFrame({})
-        print("\n  === CURRENT PREFIX SUMMARY (last 10) ===", flush=True)
-        if df0.height > 0:
-            print(df0.tail(10))
-        else:
-            print("  (no blocks)")
-        if gaps0:
-            print(f"\n  Current gaps: {len(gaps0)} (showing up to 10)", flush=True)
-            for a,b in gaps0[:10]:
-                print(f"    {a} -> {b}")
-        else:
-            print("\n  No gaps detected in current blocks.", flush=True)
-
-        # Lazy union -> dedup -> sort
-        print("  📊 Loading union, deduplicating and sorting by p...", flush=True)
-
-        def lf_blocks():
-            if not block_files:
-                return None
-            lf = pl.scan_parquet([str(p) for p in block_files])
-            return lf
-
-        def lf_runs():
-            if not run_files:
-                return None
-            lf = pl.scan_parquet([str(p) for p in run_files])
-            return lf
-
-        def lf_mono():
-            if not (mono_file and mono_file.exists()):
-                return None
-            lf = pl.scan_parquet(str(mono_file))
-            # Normalize schema: m,n,q -> m_k,n_k,q_k if needed
-            cols = lf.columns
-            rename_map = {}
-            for src, dst in [("m","m_k"),("n","n_k"),("q","q_k")]:
-                if src in cols and dst not in cols:
-                    rename_map[src] = dst
-            if rename_map:
-                lf = lf.rename(rename_map)
-            return lf
-
-        parts = []
-        for maker in (lf_blocks, lf_runs, lf_mono):
-            obj = maker()
-            if obj is not None:
-                parts.append(obj.select([c for c in obj.columns if c in ("p","m_k","n_k","q_k")]))
-        if not parts:
-            print("  ❌ No sources produced data after normalization", flush=True)
-            return
-        lf_union = pl.concat(parts, how="vertical_relaxed")
-        lf_union = lf_union.unique(['p','m_k','n_k','q_k'])
-        all_data = lf_union.sort('p').collect()
-        total_rows = len(all_data)
-        total_primes = int(all_data.select(pl.col('p').n_unique()).item())
-        print(f"  📈 Union: {total_rows:,} rows, {total_primes:,} unique primes", flush=True)
-
-        # Backup existing blocks
-        backup_timestamp = __import__('datetime').datetime.now().strftime('%Y%m%d_%H%M%S')
-        backup_blocks_dir = self.backup_dir / f"blocks_backup_{backup_timestamp}"
-        backup_blocks_dir.mkdir(exist_ok=True)
-        for file in block_files:
-            shutil.copy2(file, backup_blocks_dir / file.name)
-        print(f"  💾 Backed up {len(block_files)} block files to {backup_blocks_dir}", flush=True)
-
-        # Clear existing blocks
-        for file in block_files:
-            file.unlink()
-
-        # Partition into new blocks by unique primes with contiguity at boundaries
-        unique_primes = all_data.select('p').unique().sort('p')
-        blocks_needed = (len(unique_primes) + target_prime_count - 1) // target_prime_count
-        print(f"  📦 Emitting {blocks_needed} new blocks", flush=True)
-        for block_idx in range(blocks_needed):
-            start_idx = block_idx * target_prime_count
-            slice_size = min(target_prime_count, len(unique_primes) - start_idx)
-            slice_primes = unique_primes.slice(start_idx, slice_size)
-            min_p = int(slice_primes.select(pl.col('p').min()).item())
-            max_p = int(slice_primes.select(pl.col('p').max()).item())
-            block_df = all_data.filter((pl.col('p') >= min_p) & (pl.col('p') <= max_p)).unique(['p','m_k','n_k','q_k'])
-            out_path = self.blocks_dir / f"pp_b{block_idx+1:03d}_p{max_p}.parquet"
-            block_df.write_parquet(out_path)
-            print(f"    📦 {out_path.name}: {len(block_df):,} rows, {int(block_df.select(pl.col('p').n_unique()).item()):,} primes ({min_p:,}..{max_p:,})", flush=True)
-
-        # Final prefix check
-        print("  ✅ Rebuild complete. Running prefix check...", flush=True)
-        # Reuse CLI path by calling main behaviors lightly
-        infos = sorted_blocks_by_data()
-        cumulative = 0
-        P = Primes(proof=False)
-        mismatches = []
-        prev_max = None
-        gaps = []
-        rows = []
-        for info in infos:
-            uniq = info.num_unique_primes or 0
-            cumulative += uniq
-            expected_max = int(P.unrank(cumulative - 1)) if cumulative > 0 else None
-            if expected_max is not None and info.max_prime is not None and expected_max != info.max_prime:
-                mismatches.append((info.path.name, info.max_prime, expected_max, cumulative))
-            if prev_max is not None and info.min_prime is not None and info.min_prime > prev_max:
-                gaps.append((prev_max, info.min_prime))
-            if info.max_prime is not None:
-                prev_max = info.max_prime
-            rows.append({
-                'file': info.path.name,
-                'min_p': info.min_prime,
-                'max_p': info.max_prime,
-                'unique_p': uniq,
-                'cum_unique_p': cumulative,
-                'expected_max_p': expected_max,
-            })
-        df = pl.DataFrame(rows) if rows else pl.DataFrame({})
-        print("\n  === PREFIX SUMMARY (last 10) ===", flush=True)
-        if df.height > 0:
-            print(df.tail(10))
-        else:
-            print("  (no blocks)")
-        if gaps:
-            print(f"\n  ❌ Gaps remain after rebuild: {len(gaps)} (showing up to 10)", flush=True)
-            for a,b in gaps[:10]:
-                print(f"    {a} -> {b}")
-        else:
-            print("\n  No gaps detected between blocks.", flush=True)
-        if mismatches:
-            print(f"\n  ❌ Prefix mismatches remain after rebuild: {len(mismatches)} (showing up to 10)", flush=True)
-            for (name, cm, em, cu) in mismatches[:10]:
-                print(f"    {name}: content max {cm} vs expected {em} at cum_unique {cu}")
-        else:
-            print("\n  ✅ Prefix property verified across rebuilt blocks.", flush=True)
-
 
 def main():
     parser = argparse.ArgumentParser(description="Prime partition block manager")
@@ -668,9 +489,7 @@ def main():
     parser.add_argument("--integrate-check", action="store_true", help="Integrate runs into blocks and run integrity checks (deletes runs on success)")
     parser.add_argument("--integrity", action="store_true", help="Print quick data integrity report")
     parser.add_argument("--prefix-check", action="store_true", help="Verify cumulative unique primes match Primes.unrank(max_index) per block and report gaps")
-    parser.add_argument("--rebuild-prefix", action="store_true", help="Rebuild blocks from union (blocks + runs) enforcing prefix property")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output for checks and operations")
-    parser.add_argument("--audit-boundaries", action="store_true", help="Audit block boundary continuity and suggest first bad block index")
     parser.add_argument("--audit-prefix", action="store_true", help="Find first index where data prime differs from unrank(index)")
     parser.add_argument("--truncate-from-block", type=int, metavar="N", help="Backup and delete blocks with block_num >= N (requires --yes to execute)")
     parser.add_argument("--truncate-from-prime", type=int, metavar="P", help="Backup and delete blocks with min_p >= P (requires --yes to execute)")
@@ -709,7 +528,6 @@ def main():
             cumulative = 0
             P = Primes(proof=False)
             rows = []
-            gaps = []
             prev_max = None
             for info in infos:
                 uniq = info.num_unique_primes or 0
@@ -723,19 +541,12 @@ def main():
                     'cum_unique_p': cumulative,
                     'expected_max_p': expected_max,
                 })
-                if prev_max is not None and info.min_prime is not None and info.min_prime > prev_max:
-                    gaps.append((prev_max, info.min_prime))
                 if info.max_prime is not None:
                     prev_max = info.max_prime
             df = pl.DataFrame(rows)
             print("\n=== PREFIX SUMMARY (last 5) ===", flush=True)
             print(df.tail(5))
-            if gaps:
-                print(f"\nGaps detected: {len(gaps)} (showing up to 5)", flush=True)
-                for a,b in gaps[:5]:
-                    print(f"  {a} -> {b}")
-            else:
-                print("\nNo gaps detected between blocks.", flush=True)
+ 
     
     if args.integrity:
         print(quick_integrity_report())
@@ -809,22 +620,6 @@ def main():
                 print(f"  ... and {len(mismatches)-20} more")
         if not gaps and not filename_mismatch and not mismatches:
             print("\n✅ Prefix property holds across all blocks.")
-    
-    if args.rebuild_prefix:
-        manager.rebuild_blocks_prefix(target_prime_count=args.block_size, include_runs=True)
-
-    if args.audit_boundaries:
-        df = manager.audit_boundaries()
-        print("\n=== BOUNDARY AUDIT (last 10) ===")
-        print(df.tail(10))
-        first_gap = df.filter(pl.col('status') == 'gap').head(1)
-        if first_gap.height > 0:
-            gap_row = first_gap.to_dicts()[0]
-            # Recommend truncating from the next block (gap after idx k → truncate from idx k+1)
-            next_block = (gap_row.get('block_num') or gap_row.get('idx')) + 1
-            print(f"\nSuggested truncate-from-block: {next_block}")
-        else:
-            print("\nAll boundaries contiguous by next_prime.")
 
     if args.audit_prefix:
         res = manager.audit_prefix_first_mismatch()

@@ -11,6 +11,7 @@ import tomllib
 import time
 import shutil
 from typing import Dict, List, Optional
+import numpy as np
 
 
 
@@ -141,6 +142,19 @@ def setup_logging():
             logging.StreamHandler()
         ]
     )
+
+
+# Partition schema and constants for worker optimization
+PARTITION_SCHEMA = {'p': pl.Int64, 'm_k': pl.Int64, 'n_k': pl.Int64, 'q_k': pl.Int64}
+
+# Empirical partition distribution from 459M primes analysis
+# Used for accurate batch size estimation in workers
+PARTITION_DISTRIBUTION = {
+    'avg_rows_per_prime': 1.7,  # Including zero rows
+    'avg_partitions_per_prime': 2.05,  # Excluding zero rows  
+    'zero_probability': 0.173,  # ~17.3% have no partitions
+    'max_observed_partitions': 14  # Theoretical max observed
+}
 
 
 def get_default_data_file():
@@ -407,23 +421,23 @@ def get_small_primes_table():
 
 def show_run_files_summary():
     """
-    Show summary of all block files.
+    Show summary of all run files.
     """
     data_dir = get_data_dir()
-    block_files = list(data_dir.glob("pp_b*.parquet"))
+    run_files = list((data_dir / "runs").glob("*.parquet"))
     
-    if not block_files:
-        print("No block files found")
+    if not run_files:
+        print("No run files found")
         return
     
-    print(f"\n📁 Found {len(block_files)} block files:")
+    print(f"\n📁 Found {len(run_files)} run files:")
     
     total_rows = 0
     total_primes = 0
-    for block_file in sorted(block_files):
+    for run_file in sorted(run_files):
         try:
             # Quick stats
-            stats = pl.scan_parquet(block_file).select([
+            stats = pl.scan_parquet(run_file).select([
                 pl.len().alias("rows"),
                 pl.col("p").n_unique().alias("primes")
             ]).collect()
@@ -433,12 +447,12 @@ def show_run_files_summary():
             total_rows += rows
             total_primes += primes
             
-            print(f"  {block_file.name}: {rows:,} rows, {primes:,} primes")
+            print(f"  {run_file.name}: {rows:,} rows, {primes:,} primes")
             
         except Exception as e:
-            print(f"  {block_file.name}: Error reading ({e})")
+            print(f"  {run_file.name}: Error reading ({e})")
     
-    print(f"\n📊 Total: {total_rows:,} rows, {total_primes:,} unique primes across all blocks")
+    print(f"\n📊 Total: {total_rows:,} rows, {total_primes:,} unique primes across all run files")
 
 
 def setup_analysis_mode(args, config):
@@ -449,8 +463,6 @@ def setup_analysis_mode(args, config):
         tuple: (init_p, start_idx, append_func, use_separate_runs, data_file)
     """
     use_separate_runs = config.get('use_separate_runs', True)
-    if args.monolithic:
-        use_separate_runs = False
     
     if args.temp:
         # Temporary mode - always monolithic
@@ -459,17 +471,7 @@ def setup_analysis_mode(args, config):
         append_func = lambda df, buffer_size_arg: append_data(
             df, buffer_size_arg, data_file, verbose=args.verbose, use_separate_runs=False
         )
-        return init_p, start_idx, append_func, False, data_file
-        
-    elif args.fresh:
-        # Fresh start - clear existing data
-        init_p, start_idx = 2, 0
-        clear_existing_data(use_separate_runs)
-        append_func = lambda df, buffer_size_arg: append_data(
-            df, buffer_size_arg, verbose=args.verbose, use_separate_runs=use_separate_runs
-        )
-        return init_p, start_idx, append_func, use_separate_runs, None
-        
+        return init_p, start_idx, append_func, False, data_file        
     else:
         # Resume mode - smart resume logic
         init_p, start_idx, append_func = setup_resume_mode(use_separate_runs, args.verbose)
@@ -507,33 +509,12 @@ def setup_resume_mode(use_separate_runs, verbose):
         init_p, start_idx = resume_p(use_separate_runs=True, verbose=verbose)
         
         if init_p == 2 and start_idx == 0:
-            # No block files exist, check for existing monolithic data
-            data_file = get_default_data_file()
-            if data_file.exists():
-                try:
-                    init_p, start_idx = resume_p(use_separate_runs=False, verbose=verbose)
-                    print(f"Found existing monolithic data - resuming from prime {init_p} (index {start_idx})")
-                    print("💡 Future runs will be saved as separate files for better fault tolerance")
-                except Exception as e:
-                    print(f"Resume failed: {e}")
-                    raise
-            else:
-                print("No existing data found, starting from beginning with separate block files")
+            print("No existing data found, starting from beginning with separate block files")
         else:
             print(f"Resuming from prime {init_p} (index {start_idx}) using separate block files")
     else:
-        # Resume from monolithic file
-        data_file = get_default_data_file()
-        if data_file.exists():
-            try:
-                init_p, start_idx = resume_p(use_separate_runs=False, verbose=verbose)
-                print(f"Resuming from prime {init_p} (index {start_idx}) using monolithic file")
-            except Exception as e:
-                print(f"Resume failed: {e}")
-                raise
-        else:
-            init_p, start_idx = 2, 0
-            print("No existing data found, starting from beginning")
+        init_p, start_idx = 2, 0
+        print("No existing data found, starting from beginning")
     
     append_func = lambda df, buffer_size_arg: append_data(
         df, buffer_size_arg, verbose=verbose, use_separate_runs=use_separate_runs
@@ -563,22 +544,42 @@ def generate_partition_summary(data_file=None, verbose=False):
                 pl.col("p").n_unique().alias("unique_primes")
             ]).collect()
             
-            total_rows = stats["total_rows"].item()
+            #total_rows = stats["total_rows"].item()
             unique_primes = stats["unique_primes"].item()
             
             print(f"Total primes processed: {unique_primes:,}")
             
-            # Partition frequency analysis using glob pattern
-            partition_counts = pl.scan_parquet(block_pattern).group_by("p").agg([
-                pl.len().alias("partition_count")
-            ]).group_by("partition_count").agg([
-                pl.len().alias("prime_count")
-            ]).sort("partition_count").collect()
+            # Partition frequency analysis using batched processing
+            print("Processing blocks in batches...")
+            
+            # Process blocks in batches to avoid memory issues
+            batch_size = 50
+            all_partition_counts = {}
+            
+            for i in range(0, len(block_files), batch_size):
+                batch_files = block_files[i:i+batch_size]
+                batch_pattern = [str(f) for f in batch_files]
+                
+                try:
+                    batch_partition_counts = pl.scan_parquet(batch_pattern).group_by("p").agg([
+                        (pl.col("q_k") > 0).sum().alias("partition_count")
+                    ]).group_by("partition_count").agg([
+                        pl.len().alias("prime_count")
+                    ]).collect()
+                    
+                    # Accumulate counts
+                    for row in batch_partition_counts.iter_rows(named=True):
+                        count = row["partition_count"]
+                        primes = row["prime_count"]
+                        all_partition_counts[count] = all_partition_counts.get(count, 0) + primes
+                        
+                except Exception as e:
+                    print(f"  ⚠️  Error processing batch {i//batch_size + 1}: {e}")
+                    continue
             
             # Display the summary
-            for row in partition_counts.iter_rows(named=True):
-                count = row['partition_count']
-                primes = row['prime_count']
+            for count in sorted(all_partition_counts.keys()):
+                primes = all_partition_counts[count]
                 percentage = (primes / unique_primes) * 100
                 if count == 0:
                     print(f"  {count} partitions: {primes:,} primes ({percentage:.1f}%)")
@@ -588,8 +589,10 @@ def generate_partition_summary(data_file=None, verbose=False):
             # Show examples in verbose mode
             if verbose:
                 print(f"\nExamples of primes with multiple partitions:")
-                multi_partition_primes = pl.scan_parquet(block_pattern).group_by("p").agg([
-                    pl.len().alias("count")
+                # Use first few blocks for examples to avoid memory issues
+                sample_files = block_files[:10]  # Use first 10 blocks for examples
+                multi_partition_primes = pl.scan_parquet([str(f) for f in sample_files]).group_by("p").agg([
+                    (pl.col("q_k") > 0).sum().alias("count")
                 ]).filter(pl.col("count") > 1).sort("p").head(10).collect()
                 
                 if len(multi_partition_primes) > 0:

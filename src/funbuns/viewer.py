@@ -5,7 +5,7 @@ Interactive data viewer using Altair for prime decomposition results.
 import altair as alt
 import polars as pl
 from pathlib import Path
-from .utils import get_default_data_file
+from .utils import get_config
 
 
 def load_data_for_viz(data_path=None):
@@ -18,18 +18,20 @@ def load_data_for_viz(data_path=None):
     Returns:
         Polars DataFrame
     """
-    try:
-        if data_path is None:
-            filepath = get_default_data_file()
-        else:
-            filepath = Path(data_path)
+    if data_path is None:
+        try:
+            config = get_config()
+            if blocks_dir := Path(config.get('blocks_dir')):
+                block_pattern = blocks_dir / "pp_b*.parquet"
+                df = pl.scan_parquet(block_pattern)
+                return df
+        except Exception as e:
+            raise FileNotFoundError(f"Block data not found in pixi.toml 'blocks_dir' path. Please check. Error: {e}")
         
-        df = pl.read_parquet(filepath)
-        return df
-    except Exception as e:
-        raise FileNotFoundError(f"No data found. Please run analysis first. Error: {e}")
+    #F
+    
 
-
+#Todo: Rewrite with current schema
 def create_summary_chart(df):
     """Create summary charts of partition statistics."""
     # Get unique partition counts per prime (keep in Polars)
