@@ -191,37 +191,29 @@ def get_config():
         return {}
 
 
-def resume_p(use_separate_runs: bool = False, verbose: bool = False) -> tuple[int, int]:
+def resume_p(verbose: bool = False) -> tuple[int, int]:
     """
     Get the last processed prime and start_idx from existing parquet data.
     
     Args:
-        use_separate_runs: If True, scan all block files; if False, use monolithic file
+        Verbose...
     
     Returns:
         Tuple of (last_prime, start_idx) - (2, 0) if no data exists
     """
     try:
-        if use_separate_runs:
-            # Scan all block files using glob pattern
-            data_dir = get_data_dir()
-            block_pattern = str(data_dir / "blocks" / "pp_b*.parquet")
-            block_files = list((data_dir / "blocks").glob("pp_b*.parquet"))
-            if not block_files:
-                logging.info("No existing block files found, starting from first prime")
-                return (2, 0)
-            
-            # Use lazy scanning with glob pattern for efficiency
-            df_scan = pl.scan_parquet(block_pattern).select("p")
-            
-        else:
-            # Use monolithic file
-            filepath = get_default_data_file()
-            if not filepath.exists():
-                logging.info("No existing data found, starting from first prime")
-                return (2, 0)
-            
-            df_scan = pl.scan_parquet(filepath).select("p")
+    
+        # Scan all block files using glob pattern
+        data_dir = get_data_dir()
+        block_pattern = str(data_dir / "blocks" / "pp_b*.parquet")
+        block_files = list((data_dir / "blocks").glob("pp_b*.parquet"))
+        if not block_files:
+            logging.info("No existing block files found, starting from first prime")
+            return (2, 0)
+        
+        # Use lazy scanning with glob pattern for efficiency
+        df_scan = pl.scan_parquet(block_pattern).select("p")
+
         
         # Get both max prime and unique count (start_idx) in one operation
         result = df_scan.select([
@@ -234,23 +226,22 @@ def resume_p(use_separate_runs: bool = False, verbose: bool = False) -> tuple[in
         
         if verbose:
             print(f"🔍 DEBUG: Scan result - max_prime: {last_prime}, unique_count: {start_idx}")
-            print(f"🔍 DEBUG: Data source: {'block files' if use_separate_runs else 'monolithic file'}")
-            if use_separate_runs:
-                block_files = list((data_dir / "blocks").glob("pp_b*.parquet"))
-                print(f"🔍 DEBUG: Found {len(block_files)} block files")
-                if block_files:
-                    print(f"🔍 DEBUG: Last block: {sorted(block_files)[-1].name}")
+
+            block_files = list((data_dir / "blocks").glob("pp_b*.parquet"))
+            print(f"🔍 DEBUG: Found {len(block_files)} block files")
+            if block_files:
+                print(f"🔍 DEBUG: Last block: {sorted(block_files)[-1].name}")
         
         if last_prime is None:
             logging.info("Parquet file is empty, starting from first prime")
             return (2, 0)
             
-        source = "block files" if use_separate_runs else "main file"
+        source = "block files"
         logging.info(f"Resuming from prime {last_prime} (start_idx: {start_idx}) from {source}")
         return (int(last_prime), int(start_idx))
         
     except Exception as e:
-        source = "block files" if use_separate_runs else "main file"
+        source = "block files"
         logging.error(f"Error reading parquet {source}: {e}")
         print(f"\nError: Could not read existing data from {source}")
         print("The files may be corrupted or in an invalid format.")
@@ -258,7 +249,7 @@ def resume_p(use_separate_runs: bool = False, verbose: bool = False) -> tuple[in
         raise
 
 
-def append_data(df: pl.DataFrame, buffer_size: int = None, filepath=None, verbose: bool = False, use_separate_runs: bool = False):
+def append_data(df: pl.DataFrame, buffer_size: int = None, filepath=None, verbose: bool = False):
     """
     Append data using incremental files to avoid O(n²) operations.
     
@@ -267,47 +258,23 @@ def append_data(df: pl.DataFrame, buffer_size: int = None, filepath=None, verbos
         buffer_size: Optional buffer size for logging control  
         filepath: Optional custom file path (defaults to main data file)
         verbose: Whether to log incremental file writes
-        use_separate_runs: If True, write to separate run files instead of monolithic file
     """
-    if use_separate_runs:
-        # Write directly to a new run file in data/runs/ directory
-        runs_dir = get_data_dir() / "runs"
-        runs_dir.mkdir(exist_ok=True)
-        # Use microseconds and pid to avoid filename collisions within the same second
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-        pid = os.getpid()
-        run_file = runs_dir / f"pparts_run_{timestamp}_{pid}.parquet"
-        df.write_parquet(run_file)
-        
-        if verbose:
-            logging.info(f"Data written to run file: {run_file.name}")
-            logging.info(f"Batch size: {len(df)} rows")
-        return
+
+
+    # Write directly to a new run file in data/runs/ directory
+    runs_dir = get_data_dir() / "runs"
+    runs_dir.mkdir(exist_ok=True)
+    # Use microseconds and pid to avoid filename collisions within the same second
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+    pid = os.getpid()
+    run_file = runs_dir / f"pparts_run_{timestamp}_{pid}.parquet"
+    df.write_parquet(run_file)
     
-    # Original incremental file approach
-    if filepath is None:
-        filepath = get_default_data_file()
-    else:
-        filepath = Path(filepath)
+    if verbose:
+        logging.info(f"Data written to run file: {run_file.name}")
+        logging.info(f"Batch size: {len(df)} rows")
+    return
     
-    data_dir = filepath.parent
-    data_dir.mkdir(exist_ok=True)
-    
-    try:
-        # Write to incremental file instead of merging with existing data
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]  # milliseconds
-        incremental_file = data_dir / f"{filepath.stem}_inc_{timestamp}.parquet"
-        
-        # Write new data to incremental file (O(1) operation)
-        df.write_parquet(incremental_file)
-        
-        # Only log incremental writes in verbose mode
-        if verbose:
-            logging.info(f"Data written to incremental file: {incremental_file.name}")
-            logging.info(f"Batch size: {len(df)} rows")
-    except Exception as e:
-        logging.error(f"Failed to write incremental data: {e}")
-        raise
 
 
 
@@ -460,64 +427,43 @@ def setup_analysis_mode(args, config):
     Setup analysis mode based on CLI arguments and config.
     
     Returns:
-        tuple: (init_p, start_idx, append_func, use_separate_runs, data_file)
+        tuple: (init_p, start_idx, append_func, data_file)
     """
-    use_separate_runs = config.get('use_separate_runs', True)
     
     if args.temp:
         # Temporary mode - always monolithic
         data_file = get_temp_data_file()
         init_p, start_idx = 2, 0
         append_func = lambda df, buffer_size_arg: append_data(
-            df, buffer_size_arg, data_file, verbose=args.verbose, use_separate_runs=False
+            df, buffer_size_arg, data_file, verbose=args.verbose
         )
         return init_p, start_idx, append_func, False, data_file        
     else:
         # Resume mode - smart resume logic
-        init_p, start_idx, append_func = setup_resume_mode(use_separate_runs, args.verbose)
-        return init_p, start_idx, append_func, use_separate_runs, None
+        init_p, start_idx, append_func = setup_resume_mode(args.verbose)
+        return init_p, start_idx, append_func,  None
 
 
-def clear_existing_data(use_separate_runs):
-    """Clear existing data based on mode."""
-    if use_separate_runs:
-        # Clear block files
-        data_dir = get_data_dir()
-        block_files = list(data_dir.glob("pp_b*.parquet"))
-        if block_files:
-            for block_file in block_files:
-                block_file.unlink()
-            print(f"Deleted {len(block_files)} existing block files for fresh start")
-        else:
-            print("No existing block files found")
-    else:
-        # Clear monolithic file
-        data_file = get_default_data_file()
-        data_file.unlink(missing_ok=True)
-        print("Deleted existing data file for fresh start")
 
 
-def setup_resume_mode(use_separate_runs, verbose):
+def setup_resume_mode(verbose):
     """
     Setup resume mode with smart fallback logic.
     
     Returns:
         tuple: (init_p, start_idx, append_func)
     """
-    if use_separate_runs:
-        # Try to resume from block files first
-        init_p, start_idx = resume_p(use_separate_runs=True, verbose=verbose)
-        
-        if init_p == 2 and start_idx == 0:
-            print("No existing data found, starting from beginning with separate block files")
-        else:
-            print(f"Resuming from prime {init_p} (index {start_idx}) using separate block files")
+
+    init_p, start_idx = resume_p(verbose=verbose)
+    
+    if init_p == 2 and start_idx == 0:
+        print("No existing data found, starting from beginning with separate block files")
     else:
-        init_p, start_idx = 2, 0
-        print("No existing data found, starting from beginning")
+        print(f"Resuming from prime {init_p} (index {start_idx}) using separate block files")
+
     
     append_func = lambda df, buffer_size_arg: append_data(
-        df, buffer_size_arg, verbose=verbose, use_separate_runs=use_separate_runs
+        df, buffer_size_arg, verbose=verbose
     )
     
     return init_p, start_idx, append_func

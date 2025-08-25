@@ -93,9 +93,12 @@ def main():
     #See get_config in utils.py
     config = get_config()
     buffer_size = config.get('buffer_size', 10000)
+
     
     # Setup analysis mode (handles temp, fresh, resume logic) (in utils.py)
-    init_p, start_idx, append_func, use_separate_runs, data_file = setup_analysis_mode(args, config)
+    init_p, start_idx, append_func, data_file = setup_analysis_mode(args, config)
+
+    print("Past setup analysis")
     
     if args.temp:
         print(f"Running in temporary mode: {data_file}")
