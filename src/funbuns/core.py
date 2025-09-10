@@ -8,7 +8,8 @@ Following the algorithm outlined in sketch.md:
 - Use try/except pattern to avoid unnecessary computations
 """
 
-from sage.all import prime_range, Primes, next_prime
+from curses import init_pair
+from sage.all import prime_range, Primes, next_prime, prime_pi
 import polars as pl
 import numpy as np
 from itertools import batched
@@ -20,8 +21,8 @@ class PPBatchProcessor:
     def __init__(self, verbose: bool = False):
         """Initialize processor with timing collector."""
         # Remove DataFrame storage - using arrays now
-        if verbose:  # Use verbose flag instead of undefined debug_mode
-            self.timer = TimingCollector(verbose=verbose)
+        #if verbose:  # Use verbose flag instead of undefined debug_mode
+            #self.timer = TimingCollector(verbose=verbose)
         #Below is from small primes table implementation, currently excised.
         # Log remainder tolerance for integer detection (near IEEE 754 machine epsilon)
         #self.EPSILON = 1e-15  
@@ -38,9 +39,9 @@ class PPBatchProcessor:
             p: Integer (SageMath) - the prime to decompose  
         """
         # Handle special cases for p = 2, 3
-        if p == 2 or p == 3:
-            self._write_zero_row(int(p))
-            return
+        #if p == 2 or p == 3:
+            #self._write_zero_row(int(p))
+            #return
             
         max_m = p.exact_log(2)  # floor(log_2(p))
         found_partition = False
@@ -53,30 +54,19 @@ class PPBatchProcessor:
             (pbase, pexp) = q_cand_i.is_prime_power(proof=False, get_data=True)
             
             if pexp != 0:
-                self._write_partition_row(int(p), m_i, pexp, int(pbase))
+                if self.current_row >= len(self.results_array):
+                    self._grow_array()
+                self.results_array[self.current_row] = [p, m_i, pexp, pbase]
+                self.current_row += 1
                 found_partition = True
         
         # Add zero row if no partitions found
         if not found_partition:
-            self._write_zero_row(int(p))
+            if self.current_row >= len(self.results_array):
+                self._grow_array()
+            self.results_array[self.current_row] = [p, 0, 0, 0]
+            self.current_row += 1
     
-    def _write_zero_row(self, prime):
-        """Write zero partition row to array."""
-        if self.current_row >= len(self.results_array):
-            self._grow_array()
-        
-        row = self.current_row
-        self.results_array[row] = [prime, 0, 0, 0]
-        self.current_row += 1
-    
-    def _write_partition_row(self, prime, m, n, q):
-        """Write partition row to array."""
-        if self.current_row >= len(self.results_array):
-            self._grow_array()
-            
-        row = self.current_row
-        self.results_array[row] = [prime, m, n, q]
-        self.current_row += 1
     
     def _grow_array(self):
         """Double the array size when needed."""
@@ -142,23 +132,23 @@ def worker_batch(prime_batch, verbose=False):
         result_df = pl.DataFrame(schema=PARTITION_SCHEMA)
     
     # Return timing data if debug mode is enabled
-    timing_data = processor.timer.timings if hasattr(processor, 'timer') else []
-    return result_df, timing_data
+    #timing_data = processor.timer.timings if hasattr(processor, 'timer') else []
+    return result_df #, timing_data
 
 
 class PPBatchFeeder:
     """Efficient batch generator using Polars Series.reshape() for batching."""
     
-    def __init__(self, init_p: int, num_primes: int, batch_size: int, verbose: bool = False, start_idx: int = 0):
+    def __init__(self, init_p: int, num_primes: int, batch_size: int, verbose: bool = False):
         """
         Initialize batch feeder using Polars reshape for optimal batching.
         
         Args:
-            init_p: Starting prime (inclusive)
+            init_p: IT'S ME AGAIN.
             num_primes: Total number of primes to process
             batch_size: Size of each prime batch
             verbose: Enable verbose output for profiling
-            start_idx: Starting index for prime generation (from utils.resume_p)
+
         """
         # Validate that num_primes is divisible by batch_size
         if num_primes % batch_size != 0:
@@ -167,18 +157,15 @@ class PPBatchFeeder:
         self.batch_size = batch_size
         self.num_batches = num_primes // batch_size
         
-        if verbose:
-            print("Verbose: Computing final prime...")
+        #Todo: Work backwards to add handling for initial prime == 2/no data case
+
+        start_idx = prime_pi(init_p)
+
         P = Primes(proof=False)
-        final_prime = P.unrank(start_idx + num_primes - 1)
         
-        # Get all primes in one call (already a list)
-        # Start from next_prime(init_p) to avoid including the already-processed init_p
-        if init_p <= 2:
-            start_prime = init_p
-        else:
-            start_prime = next_prime(init_p)
-            
+        start_prime = next_prime(init_p)
+        final_prime = P.unrank(start_idx + num_primes - 1)
+                 
         if verbose:
             print(f"Verbose: Getting {num_primes} primes from {start_prime} to {final_prime}...")
         self.p_list = prime_range(start_prime, final_prime + 1)
@@ -190,8 +177,6 @@ class PPBatchFeeder:
             # Convert Array to Python list for worker compatibility
             batch = list(batch_tuple)
             yield batch
-
-
 
 
 class PPConsumer:
@@ -217,11 +202,13 @@ class PPConsumer:
         Args:
             results_df: Polars DataFrame with partition results
         """
-        if results_df.height > 0:
+        if results_df is not None and results_df.height > 0:
             self.df_buffer.append(results_df)
             self.result_count += results_df.height
             
-            if self.result_count >= self.buffer_size:
+            # By using 'while', we handle cases where a single large
+            # batch might be much larger than the buffer_size.
+            while self.result_count >= self.buffer_size:
                 self._flush_results()
     
     def _flush_results(self):
@@ -244,12 +231,12 @@ class PPConsumer:
         self._flush_results()
 
 
-def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, verbose=False, start_idx=0):
+def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, verbose=False):
     """
     Main analysis runner - handles all processing logic.
     
     Args:
-        init_p: Starting prime
+        init_p: Last prime from data or first prime, who knows!
         num_primes: Number of primes to process
         batch_size: Primes per worker batch
         cores: Number of worker processes
@@ -262,8 +249,9 @@ def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, ver
     from tqdm import tqdm
     
     # Create batch feeder and consumer
-    batch_feeder = PPBatchFeeder(init_p, num_primes, batch_size, verbose, start_idx)
-    consumer = PPConsumer(buffer_size, append_data)
+    batch_feeder = PPBatchFeeder(init_p, num_primes, batch_size, verbose)
+    consumer = PPConsumer(buffer_size, append_data) 
+
     
     print(f"Processing {num_primes} primes starting from {init_p}")
     print(f"Batch size: {batch_size} primes per worker")
@@ -286,7 +274,7 @@ def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, ver
                 
                 # Process  batch - returns (DataFrame, timing_data)
                 #Reimplement with more robust profiling: results_df , timing_data = pool.apply(worker_batch, (prime_batch, verbose))
-                results_df, all_timing_data = pool.apply(worker_batch, (prime_batch, verbose))
+                results_df= pool.apply(worker_batch, (prime_batch, verbose))
                 
                 
                 # Collect timing data
@@ -309,14 +297,12 @@ def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, ver
     # Finalize any remaining results
     consumer.finalize()
     
-
-    
     # Process and save timing data
-    if all_timing_data and verbose:
-        timing_collector = TimingCollector(verbose=verbose)
-        timing_collector.timings = all_timing_data
-        timing_collector.save_debug_log()
-        timing_collector.print_summary()
+    #if all_timing_data and verbose:
+    #    timing_collector = TimingCollector(verbose=verbose)
+    #    timing_collector.timings = all_timing_data
+    #    timing_collector.save_debug_log()
+    #    timing_collector.print_summary()
     
     print(f"\nCompleted processing {primes_processed} primes in {batches_processed} batches")
     print(f"Results merged and saved")
@@ -324,8 +310,8 @@ def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, ver
     # Automatically convert run files to blocks if using separate runs
     convert_runs_to_blocks_auto()
 
-    if verbose and all_timing_data:
-        print(f"Timing data collected: {len(all_timing_data)} operations")
+    #if verbose and all_timing_data:
+    #    print(f"Timing data collected: {len(all_timing_data)} operations")
 
 
 

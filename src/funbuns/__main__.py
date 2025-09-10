@@ -92,24 +92,22 @@ def main():
     # Get configuration and setup analysis mode
     #See get_config in utils.py
     config = get_config()
-    buffer_size = config.get('buffer_size', 10000)
+    buffer_size = args.batch_size * 2
 
     
     # Setup analysis mode (handles temp, fresh, resume logic) (in utils.py)
-    init_p, start_idx, append_func, data_file = setup_analysis_mode(args, config)
-
-    print("Past setup analysis")
+    init_p, append_func, data_file = setup_analysis_mode(args, config)
     
     if args.temp:
         print(f"Running in temporary mode: {data_file}")
     
-    run_gen(init_p, args.num_primes, args.batch_size, cores, buffer_size, append_func, args.verbose, start_idx)
+    run_gen(init_p, args.num_primes, args.batch_size, cores, buffer_size, append_func, args.verbose)
     
     # Show partition summary
     #if args.temp:
         #generate_partition_summary(data_file, verbose=args.verbose)
     #else:
-        #generate_partition_summary(verbose=args.verbose)
+    #generate_partition_summary(verbose=args.verbose)
 
 
 if __name__ == "__main__":

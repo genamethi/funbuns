@@ -1155,3 +1155,6 @@ Use `select()` or `filter()` instead.
 2025-08-24 20:52:14,835 - INFO - Resuming from prime 11940682979 (start_idx: 539000000) from block files
 2025-08-24 20:59:00,668 - INFO - Resuming from prime 12172797893 (start_idx: 549000000) from block files
 2025-08-24 21:05:51,195 - INFO - Resuming from prime 12405136253 (start_idx: 559000000) from block files
+2025-08-25 04:16:17,393 - ERROR - Error reading parquet block files: No active exception to reraise
+2025-08-25 06:21:55,286 - ERROR - Error reading parquet block files: name 'init_p' is not defined
+2025-08-29 08:46:36,558 - ERROR - Error reading parquet block files: parquet: File out of specification: expected parquet magic bytes "PAR1" in footer, got "!Y?}" instead

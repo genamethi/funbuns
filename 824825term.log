@@ -1,0 +1,1273 @@
+ funbuns -n 10000000 -b 10000
+Using 12 workers (physical cores)
+2025-08-23 21:55:27,776 - INFO - Resuming from prime 1590425971 (start_idx: 79000000) from block files
+Resuming from prime 1590425971 (index 79000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 1590425971
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:45<00:00, 17087.95prime/s, Batches=1000, Batch Size=1e+4, Results=20485]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 178 block files
+Total primes processed: 89,000,000
+  1 partition: 40,674,384 primes (45.7%)
+  2 partitions: 22,363,747 primes (25.1%)
+  3 partitions: 13,996,896 primes (15.7%)
+  4 partitions: 7,137,903 primes (8.0%)
+  5 partitions: 3,125,620 primes (3.5%)
+  6 partitions: 1,183,625 primes (1.3%)
+  7 partitions: 384,457 primes (0.4%)
+  8 partitions: 104,522 primes (0.1%)
+  9 partitions: 23,827 primes (0.0%)
+  10 partitions: 4,320 primes (0.0%)
+  11 partitions: 620 primes (0.0%)
+  12 partitions: 76 primes (0.0%)
+  13 partitions: 3 primes (0.0%)
+ funbuns -n 10000000 -b 10000
+Using 12 workers (physical cores)
+2025-08-23 22:06:50,062 - INFO - Resuming from prime 1802933611 (start_idx: 89000000) from block files
+Resuming from prime 1802933611 (index 89000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 1802933611
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:51<00:00, 16896.68prime/s, Batches=1000, Batch Size=1e+4, Results=20452]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 198 block files
+Total primes processed: 99,000,000
+  1 partition: 45,315,084 primes (45.8%)
+  2 partitions: 24,858,958 primes (25.1%)
+  3 partitions: 15,546,154 primes (15.7%)
+  4 partitions: 7,923,727 primes (8.0%)
+  5 partitions: 3,467,909 primes (3.5%)
+  6 partitions: 1,313,837 primes (1.3%)
+  7 partitions: 426,157 primes (0.4%)
+  8 partitions: 116,058 primes (0.1%)
+  9 partitions: 26,538 primes (0.0%)
+  10 partitions: 4,803 primes (0.0%)
+  11 partitions: 688 primes (0.0%)
+  12 partitions: 83 primes (0.0%)
+  13 partitions: 4 primes (0.0%)
+ funbuns -n 10000000 -b 10000
+Using 12 workers (physical cores)
+2025-08-23 22:17:40,776 - INFO - Resuming from prime 2016634091 (start_idx: 99000000) from block files
+Resuming from prime 2016634091 (index 99000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 2016634091
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:50<00:00, 16930.56prime/s, Batches=1000, Batch Size=1e+4, Results=20829]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 218 block files
+Total primes processed: 109,000,000
+  1 partition: 49,908,666 primes (45.8%)
+  2 partitions: 27,352,324 primes (25.1%)
+  3 partitions: 17,106,275 primes (15.7%)
+  4 partitions: 8,724,257 primes (8.0%)
+  5 partitions: 3,821,660 primes (3.5%)
+  6 partitions: 1,450,354 primes (1.3%)
+  7 partitions: 471,621 primes (0.4%)
+  8 partitions: 128,968 primes (0.1%)
+  9 partitions: 29,575 primes (0.0%)
+  10 partitions: 5,420 primes (0.0%)
+  11 partitions: 781 primes (0.0%)
+  12 partitions: 95 primes (0.0%)
+  13 partitions: 4 primes (0.0%)
+ funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000
+Using 12 workers (physical cores)
+2025-08-23 22:30:12,057 - INFO - Resuming from prime 2231422087 (start_idx: 109000000) from block files
+Resuming from prime 2231422087 (index 109000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 2231422087
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:56<00:00, 16774.76prime/s, Batches=1000, Batch Size=1e+4, Results=20660]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 238 block files
+Total primes processed: 119,000,000
+  1 partition: 54,428,175 primes (45.7%)
+  2 partitions: 29,842,088 primes (25.1%)
+  3 partitions: 18,686,949 primes (15.7%)
+  4 partitions: 9,548,592 primes (8.0%)
+  5 partitions: 4,192,349 primes (3.5%)
+  6 partitions: 1,596,011 primes (1.3%)
+  7 partitions: 521,852 primes (0.4%)
+  8 partitions: 143,582 primes (0.1%)
+  9 partitions: 33,200 primes (0.0%)
+  10 partitions: 6,172 primes (0.0%)
+  11 partitions: 910 primes (0.0%)
+  12 partitions: 114 primes (0.0%)
+  13 partitions: 6 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-23 22:41:08,341 - INFO - Resuming from prime 2447142727 (start_idx: 119000000) from block files
+Resuming from prime 2447142727 (index 119000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 2447142727
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:56<00:00, 16757.36prime/s, Batches=1000, Batch Size=1e+4, Results=20750]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 258 block files
+Total primes processed: 129,000,000
+  1 partition: 58,973,665 primes (45.7%)
+  2 partitions: 32,331,618 primes (25.1%)
+  3 partitions: 20,259,375 primes (15.7%)
+  4 partitions: 10,365,038 primes (8.0%)
+  5 partitions: 4,557,545 primes (3.5%)
+  6 partitions: 1,740,003 primes (1.3%)
+  7 partitions: 570,184 primes (0.4%)
+  8 partitions: 157,840 primes (0.1%)
+  9 partitions: 36,695 primes (0.0%)
+  10 partitions: 6,874 primes (0.0%)
+  11 partitions: 1,030 primes (0.0%)
+  12 partitions: 126 primes (0.0%)
+  13 partitions: 7 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-23 22:52:13,824 - INFO - Resuming from prime 2663748103 (start_idx: 129000000) from block files
+Resuming from prime 2663748103 (index 129000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 2663748103
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:56<00:00, 16762.28prime/s, Batches=1000, Batch Size=1e+4, Results=20463]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 278 block files
+Total primes processed: 139,000,000
+  1 partition: 63,543,877 primes (45.7%)
+  2 partitions: 34,820,440 primes (25.1%)
+  3 partitions: 21,824,804 primes (15.7%)
+  4 partitions: 11,172,740 primes (8.0%)
+  5 partitions: 4,919,228 primes (3.5%)
+  6 partitions: 1,880,373 primes (1.4%)
+  7 partitions: 617,780 primes (0.4%)
+  8 partitions: 171,754 primes (0.1%)
+  9 partitions: 40,145 primes (0.0%)
+  10 partitions: 7,554 primes (0.0%)
+  11 partitions: 1,155 primes (0.0%)
+  12 partitions: 141 primes (0.0%)
+  13 partitions: 9 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-23 23:03:30,603 - INFO - Resuming from prime 2881172057 (start_idx: 139000000) from block files
+Resuming from prime 2881172057 (index 139000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 2881172057
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:59<00:00, 16680.12prime/s, Batches=1000, Batch Size=1e+4, Results=20556]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 298 block files
+Total primes processed: 149,000,000
+  1 partition: 68,132,302 primes (45.7%)
+  2 partitions: 37,310,383 primes (25.0%)
+  3 partitions: 23,384,313 primes (15.7%)
+  4 partitions: 11,973,519 primes (8.0%)
+  5 partitions: 5,276,931 primes (3.5%)
+  6 partitions: 2,019,763 primes (1.4%)
+  7 partitions: 664,444 primes (0.4%)
+  8 partitions: 185,281 primes (0.1%)
+  9 partitions: 43,373 primes (0.0%)
+  10 partitions: 8,249 primes (0.0%)
+  11 partitions: 1,278 primes (0.0%)
+  12 partitions: 151 primes (0.0%)
+  13 partitions: 13 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-23 23:14:53,646 - INFO - Resuming from prime 3099373523 (start_idx: 149000000) from block files
+Resuming from prime 3099373523 (index 149000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 3099373523
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:56<00:00, 16761.33prime/s, Batches=1000, Batch Size=1e+4, Results=20644]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 318 block files
+Total primes processed: 159,000,000
+  1 partition: 72,742,195 primes (45.7%)
+  2 partitions: 39,793,428 primes (25.0%)
+  3 partitions: 24,939,894 primes (15.7%)
+  4 partitions: 12,770,658 primes (8.0%)
+  5 partitions: 5,631,239 primes (3.5%)
+  6 partitions: 2,156,733 primes (1.4%)
+  7 partitions: 710,471 primes (0.4%)
+  8 partitions: 198,329 primes (0.1%)
+  9 partitions: 46,532 primes (0.0%)
+  10 partitions: 8,929 primes (0.0%)
+  11 partitions: 1,404 primes (0.0%)
+  12 partitions: 172 primes (0.0%)
+  13 partitions: 16 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-23 23:26:25,052 - INFO - Resuming from prime 3318283333 (start_idx: 159000000) from block files
+Resuming from prime 3318283333 (index 159000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 3318283333
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:50<00:00, 16944.36prime/s, Batches=1000, Batch Size=1e+4, Results=20628]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 338 block files
+Total primes processed: 169,000,000
+  1 partition: 77,366,250 primes (45.8%)
+  2 partitions: 42,277,237 primes (25.0%)
+  3 partitions: 26,490,825 primes (15.7%)
+  4 partitions: 13,563,432 primes (8.0%)
+  5 partitions: 5,982,213 primes (3.5%)
+  6 partitions: 2,291,981 primes (1.4%)
+  7 partitions: 755,786 primes (0.4%)
+  8 partitions: 211,238 primes (0.1%)
+  9 partitions: 49,727 primes (0.0%)
+  10 partitions: 9,581 primes (0.0%)
+  11 partitions: 1,526 primes (0.0%)
+  12 partitions: 187 primes (0.0%)
+  13 partitions: 17 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-23 23:37:49,543 - INFO - Resuming from prime 3537803429 (start_idx: 169000000) from block files
+Resuming from prime 3537803429 (index 169000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 3537803429
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:53<00:00, 16848.12prime/s, Batches=1000, Batch Size=1e+4, Results=20317]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 358 block files
+
+Total primes processed: 179,000,000
+zsh: killed     funbuns -n 10000000 -b 10000
+/home/erpage159/fluid/research/funbuns/.pixi/envs/default/lib/python3.12/multiprocessing/resource_tracker.py:279: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+ 
+ funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000
+Using 12 workers (physical cores)
+2025-08-24 04:18:25,624 - INFO - Resuming from prime 3757961567 (start_idx: 179000000) from block files
+Resuming from prime 3757961567 (index 179000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 3757961567
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:53<00:00, 16847.72prime/s, Batches=1000, Batch Size=1e+4, Results=20219]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 378 block files
+Total primes processed: 189,000,000
+Processing blocks in batches...
+  0 partitions: 32,400,584 primes (17.1%)
+  1 partition: 54,254,803 primes (28.7%)
+  2 partitions: 47,246,038 primes (25.0%)
+  3 partitions: 29,578,214 primes (15.6%)
+  4 partitions: 15,137,851 primes (8.0%)
+  5 partitions: 6,675,492 primes (3.5%)
+  6 partitions: 2,558,376 primes (1.4%)
+  7 partitions: 843,966 primes (0.4%)
+  8 partitions: 236,202 primes (0.1%)
+  9 partitions: 55,696 primes (0.0%)
+  10 partitions: 10,801 primes (0.0%)
+  11 partitions: 1,745 primes (0.0%)
+  12 partitions: 209 primes (0.0%)
+  13 partitions: 23 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 04:29:39,525 - INFO - Resuming from prime 3978735073 (start_idx: 189000000) from block files
+Resuming from prime 3978735073 (index 189000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 3978735073
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:59<00:00, 16677.29prime/s, Batches=1000, Batch Size=1e+4, Results=20116]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 398 block files
+Total primes processed: 199,000,000
+Processing blocks in batches...
+  0 partitions: 34,172,114 primes (17.2%)
+  1 partition: 57,149,743 primes (28.7%)
+  2 partitions: 49,728,256 primes (25.0%)
+  3 partitions: 31,115,187 primes (15.6%)
+  4 partitions: 15,918,864 primes (8.0%)
+  5 partitions: 7,018,481 primes (3.5%)
+  6 partitions: 2,689,393 primes (1.4%)
+  7 partitions: 887,272 primes (0.4%)
+  8 partitions: 248,575 primes (0.1%)
+  9 partitions: 58,599 primes (0.0%)
+  10 partitions: 11,436 primes (0.0%)
+  11 partitions: 1,838 primes (0.0%)
+  12 partitions: 217 primes (0.0%)
+  13 partitions: 25 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 04:41:02,923 - INFO - Resuming from prime 4200086549 (start_idx: 199000000) from block files
+Resuming from prime 4200086549 (index 199000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 4200086549
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [09:59<00:00, 16690.80prime/s, Batches=1000, Batch Size=1e+4, Results=20963]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 418 block files
+Total primes processed: 209,000,000
+Processing blocks in batches...
+  0 partitions: 35,890,099 primes (17.2%)
+  1 partition: 60,001,101 primes (28.7%)
+  2 partitions: 52,211,273 primes (25.0%)
+  3 partitions: 32,678,547 primes (15.6%)
+  4 partitions: 16,729,761 primes (8.0%)
+  5 partitions: 7,382,085 primes (3.5%)
+  6 partitions: 2,831,999 primes (1.4%)
+  7 partitions: 936,050 primes (0.4%)
+  8 partitions: 262,592 primes (0.1%)
+  9 partitions: 62,101 primes (0.0%)
+  10 partitions: 12,169 primes (0.0%)
+  11 partitions: 1,967 primes (0.0%)
+  12 partitions: 227 primes (0.0%)
+  13 partitions: 29 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 04:52:32,403 - INFO - Resuming from prime 4421905661 (start_idx: 209000000) from block files
+Resuming from prime 4421905661 (index 209000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 4421905661
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:08<00:00, 16439.16prime/s, Batches=1000, Batch Size=1e+4, Results=20744]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 438 block files
+Total primes processed: 219,000,000
+Processing blocks in batches...
+  0 partitions: 37,579,715 primes (17.2%)
+  1 partition: 62,828,207 primes (28.7%)
+  2 partitions: 54,695,774 primes (25.0%)
+  3 partitions: 34,258,009 primes (15.6%)
+  4 partitions: 17,554,787 primes (8.0%)
+  5 partitions: 7,756,581 primes (3.5%)
+  6 partitions: 2,980,878 primes (1.4%)
+  7 partitions: 987,111 primes (0.5%)
+  8 partitions: 277,651 primes (0.1%)
+  9 partitions: 65,930 primes (0.0%)
+  10 partitions: 12,980 primes (0.0%)
+  11 partitions: 2,104 primes (0.0%)
+  12 partitions: 242 primes (0.0%)
+  13 partitions: 31 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 05:04:12,727 - INFO - Resuming from prime 4644257873 (start_idx: 219000000) from block files
+Resuming from prime 4644257873 (index 219000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 4644257873
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:03<00:00, 16572.31prime/s, Batches=1000, Batch Size=1e+4, Results=20638]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 458 block files
+Total primes processed: 229,000,000
+Processing blocks in batches...
+  0 partitions: 39,278,437 primes (17.2%)
+  1 partition: 65,659,798 primes (28.7%)
+  2 partitions: 57,181,751 primes (25.0%)
+  3 partitions: 35,832,770 primes (15.6%)
+  4 partitions: 18,375,995 primes (8.0%)
+  5 partitions: 8,127,854 primes (3.5%)
+  6 partitions: 3,127,412 primes (1.4%)
+  7 partitions: 1,037,437 primes (0.5%)
+  8 partitions: 292,583 primes (0.1%)
+  9 partitions: 69,663 primes (0.0%)
+  10 partitions: 13,778 primes (0.0%)
+  11 partitions: 2,222 primes (0.0%)
+  12 partitions: 268 primes (0.0%)
+  13 partitions: 32 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 05:15:55,169 - INFO - Resuming from prime 4867094867 (start_idx: 229000000) from block files
+Resuming from prime 4867094867 (index 229000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 4867094867
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:03<00:00, 16560.17prime/s, Batches=1000, Batch Size=1e+4, Results=20648]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 478 block files
+Total primes processed: 239,000,000
+Processing blocks in batches...
+  0 partitions: 40,986,609 primes (17.1%)
+  1 partition: 68,500,901 primes (28.7%)
+  2 partitions: 59,663,670 primes (25.0%)
+  3 partitions: 37,400,950 primes (15.6%)
+  4 partitions: 19,193,189 primes (8.0%)
+  5 partitions: 8,496,232 primes (3.6%)
+  6 partitions: 3,272,945 primes (1.4%)
+  7 partitions: 1,087,722 primes (0.5%)
+  8 partitions: 307,279 primes (0.1%)
+  9 partitions: 73,303 primes (0.0%)
+  10 partitions: 14,538 primes (0.0%)
+  11 partitions: 2,337 primes (0.0%)
+  12 partitions: 290 primes (0.0%)
+  13 partitions: 35 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 05:27:40,319 - INFO - Resuming from prime 5090380741 (start_idx: 239000000) from block files
+Resuming from prime 5090380741 (index 239000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 5090380741
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:03<00:00, 16559.90prime/s, Batches=1000, Batch Size=1e+4, Results=20577]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 498 block files
+Total primes processed: 249,000,000
+Processing blocks in batches...
+  0 partitions: 42,699,577 primes (17.1%)
+  1 partition: 71,346,281 primes (28.7%)
+  2 partitions: 62,146,546 primes (25.0%)
+  3 partitions: 38,968,005 primes (15.6%)
+  4 partitions: 20,006,632 primes (8.0%)
+  5 partitions: 8,861,600 primes (3.6%)
+  6 partitions: 3,417,455 primes (1.4%)
+  7 partitions: 1,137,135 primes (0.5%)
+  8 partitions: 321,677 primes (0.1%)
+  9 partitions: 76,982 primes (0.0%)
+  10 partitions: 15,296 primes (0.0%)
+  11 partitions: 2,471 primes (0.0%)
+  12 partitions: 307 primes (0.0%)
+  13 partitions: 36 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 05:39:27,611 - INFO - Resuming from prime 5314096859 (start_idx: 249000000) from block files
+Resuming from prime 5314096859 (index 249000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 5314096859
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:04<00:00, 16531.16prime/s, Batches=1000, Batch Size=1e+4, Results=20565]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 518 block files
+Total primes processed: 259,000,000
+Processing blocks in batches...
+  0 partitions: 44,420,814 primes (17.2%)
+  1 partition: 74,196,149 primes (28.6%)
+  2 partitions: 64,627,137 primes (25.0%)
+  3 partitions: 40,531,377 primes (15.6%)
+  4 partitions: 20,817,246 primes (8.0%)
+  5 partitions: 9,225,645 primes (3.6%)
+  6 partitions: 3,560,123 primes (1.4%)
+  7 partitions: 1,186,244 primes (0.5%)
+  8 partitions: 335,837 primes (0.1%)
+  9 partitions: 80,462 primes (0.0%)
+  10 partitions: 16,014 primes (0.0%)
+  11 partitions: 2,584 primes (0.0%)
+  12 partitions: 329 primes (0.0%)
+  13 partitions: 39 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 05:51:19,673 - INFO - Resuming from prime 5538271547 (start_idx: 259000000) from block files
+Resuming from prime 5538271547 (index 259000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 5538271547
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:01<00:00, 16615.14prime/s, Batches=1000, Batch Size=1e+4, Results=20660]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 538 block files
+Total primes processed: 269,000,000
+Processing blocks in batches...
+  0 partitions: 46,144,163 primes (17.2%)
+  1 partition: 77,051,328 primes (28.6%)
+  2 partitions: 67,107,291 primes (24.9%)
+  3 partitions: 42,093,550 primes (15.6%)
+  4 partitions: 21,625,473 primes (8.0%)
+  5 partitions: 9,587,887 primes (3.6%)
+  6 partitions: 3,701,959 primes (1.4%)
+  7 partitions: 1,234,539 primes (0.5%)
+  8 partitions: 350,075 primes (0.1%)
+  9 partitions: 83,915 primes (0.0%)
+  10 partitions: 16,739 primes (0.0%)
+  11 partitions: 2,695 primes (0.0%)
+  12 partitions: 347 primes (0.0%)
+  13 partitions: 39 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 06:03:12,822 - INFO - Resuming from prime 5762767343 (start_idx: 269000000) from block files
+Resuming from prime 5762767343 (index 269000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 5762767343
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:07<00:00, 16449.15prime/s, Batches=1000, Batch Size=1e+4, Results=20413]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 558 block files
+Total primes processed: 279,000,000
+Processing blocks in batches...
+  0 partitions: 47,875,974 primes (17.2%)
+  1 partition: 79,910,308 primes (28.6%)
+  2 partitions: 69,587,894 primes (24.9%)
+  3 partitions: 43,650,221 primes (15.6%)
+  4 partitions: 22,429,443 primes (8.0%)
+  5 partitions: 9,948,557 primes (3.6%)
+  6 partitions: 3,842,954 primes (1.4%)
+  7 partitions: 1,282,659 primes (0.5%)
+  8 partitions: 364,021 primes (0.1%)
+  9 partitions: 87,312 primes (0.0%)
+  10 partitions: 17,429 primes (0.0%)
+  11 partitions: 2,827 primes (0.0%)
+  12 partitions: 359 primes (0.0%)
+  13 partitions: 41 primes (0.0%)
+  14 partitions: 1 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 06:15:33,256 - INFO - Resuming from prime 5987713507 (start_idx: 279000000) from block files
+Resuming from prime 5987713507 (index 279000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 5987713507
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:03<00:00, 16580.45prime/s, Batches=1000, Batch Size=1e+4, Results=20462]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 578 block files
+Total primes processed: 289,000,000
+Processing blocks in batches...
+  0 partitions: 49,612,465 primes (17.2%)
+  1 partition: 82,772,582 primes (28.6%)
+  2 partitions: 72,068,485 primes (24.9%)
+  3 partitions: 45,205,970 primes (15.6%)
+  4 partitions: 23,230,622 primes (8.0%)
+  5 partitions: 10,306,591 primes (3.6%)
+  6 partitions: 3,983,349 primes (1.4%)
+  7 partitions: 1,329,916 primes (0.5%)
+  8 partitions: 377,783 primes (0.1%)
+  9 partitions: 90,774 primes (0.0%)
+  10 partitions: 18,101 primes (0.0%)
+  11 partitions: 2,948 primes (0.0%)
+  12 partitions: 367 primes (0.0%)
+  13 partitions: 46 primes (0.0%)
+  14 partitions: 1 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 06:27:34,601 - INFO - Resuming from prime 6213011977 (start_idx: 289000000) from block files
+Resuming from prime 6213011977 (index 289000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 6213011977
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:04<00:00, 16549.07prime/s, Batches=1000, Batch Size=1e+4, Results=20403]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 598 block files
+Total primes processed: 299,000,000
+Processing blocks in batches...
+  0 partitions: 51,355,002 primes (17.2%)
+  1 partition: 85,641,477 primes (28.6%)
+  2 partitions: 74,544,433 primes (24.9%)
+  3 partitions: 46,760,727 primes (15.6%)
+  4 partitions: 24,029,447 primes (8.0%)
+  5 partitions: 10,661,608 primes (3.6%)
+  6 partitions: 4,122,912 primes (1.4%)
+  7 partitions: 1,376,764 primes (0.5%)
+  8 partitions: 391,259 primes (0.1%)
+  9 partitions: 94,125 primes (0.0%)
+  10 partitions: 18,755 primes (0.0%)
+  11 partitions: 3,060 primes (0.0%)
+  12 partitions: 383 primes (0.0%)
+  13 partitions: 47 primes (0.0%)
+  14 partitions: 1 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 06:39:40,269 - INFO - Resuming from prime 6438741431 (start_idx: 299000000) from block files
+Resuming from prime 6438741431 (index 299000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 6438741431
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:03<00:00, 16566.49prime/s, Batches=1000, Batch Size=1e+4, Results=20414]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 618 block files
+Total primes processed: 309,000,000
+Processing blocks in batches...
+  0 partitions: 53,101,923 primes (17.2%)
+  1 partition: 88,512,369 primes (28.6%)
+  2 partitions: 77,022,808 primes (24.9%)
+  3 partitions: 48,310,659 primes (15.6%)
+  4 partitions: 24,826,844 primes (8.0%)
+  5 partitions: 11,016,439 primes (3.6%)
+  6 partitions: 4,260,799 primes (1.4%)
+  7 partitions: 1,422,864 primes (0.5%)
+  8 partitions: 404,900 primes (0.1%)
+  9 partitions: 97,371 primes (0.0%)
+  10 partitions: 19,388 primes (0.0%)
+  11 partitions: 3,184 primes (0.0%)
+  12 partitions: 401 primes (0.0%)
+  13 partitions: 50 primes (0.0%)
+  14 partitions: 1 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 06:51:48,260 - INFO - Resuming from prime 6664751449 (start_idx: 309000000) from block files
+Resuming from prime 6664751449 (index 309000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 6664751449
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:05<00:00, 16517.96prime/s, Batches=1000, Batch Size=1e+4, Results=20534]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 638 block files
+Total primes processed: 319,000,000
+Processing blocks in batches...
+  0 partitions: 54,852,042 primes (17.2%)
+  1 partition: 91,386,520 primes (28.6%)
+  2 partitions: 79,503,423 primes (24.9%)
+  3 partitions: 49,857,575 primes (15.6%)
+  4 partitions: 25,621,832 primes (8.0%)
+  5 partitions: 11,370,093 primes (3.6%)
+  6 partitions: 4,397,123 primes (1.4%)
+  7 partitions: 1,468,644 primes (0.5%)
+  8 partitions: 418,256 primes (0.1%)
+  9 partitions: 100,713 primes (0.0%)
+  10 partitions: 20,000 primes (0.0%)
+  11 partitions: 3,313 primes (0.0%)
+  12 partitions: 415 primes (0.0%)
+  13 partitions: 50 primes (0.0%)
+  14 partitions: 1 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 07:04:01,839 - INFO - Resuming from prime 6891136907 (start_idx: 319000000) from block files
+Resuming from prime 6891136907 (index 319000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 6891136907
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:04<00:00, 16534.98prime/s, Batches=1000, Batch Size=1e+4, Results=20489]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 658 block files
+Total primes processed: 329,000,000
+Processing blocks in batches...
+  0 partitions: 56,606,698 primes (17.2%)
+  1 partition: 94,263,745 primes (28.7%)
+  2 partitions: 81,984,350 primes (24.9%)
+  3 partitions: 51,400,589 primes (15.6%)
+  4 partitions: 26,415,234 primes (8.0%)
+  5 partitions: 11,720,842 primes (3.6%)
+  6 partitions: 4,533,747 primes (1.4%)
+  7 partitions: 1,514,896 primes (0.5%)
+  8 partitions: 431,466 primes (0.1%)
+  9 partitions: 103,899 primes (0.0%)
+  10 partitions: 20,630 primes (0.0%)
+  11 partitions: 3,422 primes (0.0%)
+  12 partitions: 430 primes (0.0%)
+  13 partitions: 50 primes (0.0%)
+  14 partitions: 2 primes (0.0%)
+ funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000 && funbuns -n 10000000 -b 10000
+Using 12 workers (physical cores)
+2025-08-24 10:36:28,514 - INFO - Resuming from prime 7117819117 (start_idx: 329000000) from block files
+Resuming from prime 7117819117 (index 329000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 7117819117
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:05<00:00, 16510.80prime/s, Batches=1000, Batch Size=1e+4, Results=20523]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 678 block files
+Total primes processed: 339,000,000
+Processing blocks in batches...
+  0 partitions: 58,368,065 primes (17.2%)
+  1 partition: 97,142,536 primes (28.7%)
+  2 partitions: 84,461,391 primes (24.9%)
+  3 partitions: 52,944,099 primes (15.6%)
+  4 partitions: 27,206,192 primes (8.0%)
+  5 partitions: 12,070,462 primes (3.6%)
+  6 partitions: 4,670,146 primes (1.4%)
+  7 partitions: 1,560,263 primes (0.5%)
+  8 partitions: 444,495 primes (0.1%)
+  9 partitions: 107,009 primes (0.0%)
+  10 partitions: 21,313 primes (0.0%)
+  11 partitions: 3,533 primes (0.0%)
+  12 partitions: 442 primes (0.0%)
+  13 partitions: 52 primes (0.0%)
+  14 partitions: 2 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 10:48:51,964 - INFO - Resuming from prime 7344842627 (start_idx: 339000000) from block files
+Resuming from prime 7344842627 (index 339000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 7344842627
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:07<00:00, 16447.51prime/s, Batches=1000, Batch Size=1e+4, Results=20484]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 698 block files
+Total primes processed: 349,000,000
+Processing blocks in batches...
+  0 partitions: 60,133,878 primes (17.2%)
+  1 partition: 100,026,109 primes (28.7%)
+  2 partitions: 86,936,961 primes (24.9%)
+  3 partitions: 54,485,421 primes (15.6%)
+  4 partitions: 27,994,733 primes (8.0%)
+  5 partitions: 12,418,692 primes (3.6%)
+  6 partitions: 4,805,059 primes (1.4%)
+  7 partitions: 1,605,499 primes (0.5%)
+  8 partitions: 457,417 primes (0.1%)
+  9 partitions: 110,191 primes (0.0%)
+  10 partitions: 21,904 primes (0.0%)
+  11 partitions: 3,625 primes (0.0%)
+  12 partitions: 453 primes (0.0%)
+  13 partitions: 56 primes (0.0%)
+  14 partitions: 2 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 11:01:20,088 - INFO - Resuming from prime 7572173381 (start_idx: 349000000) from block files
+Resuming from prime 7572173381 (index 349000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 7572173381
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:06<00:00, 16490.32prime/s, Batches=1000, Batch Size=1e+4, Results=20262]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 718 block files
+Total primes processed: 359,000,000
+Processing blocks in batches...
+  0 partitions: 61,904,353 primes (17.2%)
+  1 partition: 102,908,629 primes (28.7%)
+  2 partitions: 89,414,885 primes (24.9%)
+  3 partitions: 56,024,099 primes (15.6%)
+  4 partitions: 28,781,236 primes (8.0%)
+  5 partitions: 12,766,666 primes (3.6%)
+  6 partitions: 4,939,431 primes (1.4%)
+  7 partitions: 1,650,461 primes (0.5%)
+  8 partitions: 470,218 primes (0.1%)
+  9 partitions: 113,269 primes (0.0%)
+  10 partitions: 22,511 primes (0.0%)
+  11 partitions: 3,720 primes (0.0%)
+  12 partitions: 463 primes (0.0%)
+  13 partitions: 57 primes (0.0%)
+  14 partitions: 2 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 11:13:48,708 - INFO - Resuming from prime 7799850211 (start_idx: 359000000) from block files
+Resuming from prime 7799850211 (index 359000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 7799850211
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:07<00:00, 16454.05prime/s, Batches=1000, Batch Size=1e+4, Results=20196]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 738 block files
+Total primes processed: 369,000,000
+Processing blocks in batches...
+  0 partitions: 63,676,466 primes (17.3%)
+  1 partition: 105,796,845 primes (28.7%)
+  2 partitions: 91,890,112 primes (24.9%)
+  3 partitions: 57,561,053 primes (15.6%)
+  4 partitions: 29,567,236 primes (8.0%)
+  5 partitions: 13,113,152 primes (3.6%)
+  6 partitions: 5,072,998 primes (1.4%)
+  7 partitions: 1,695,369 primes (0.5%)
+  8 partitions: 482,948 primes (0.1%)
+  9 partitions: 116,363 primes (0.0%)
+  10 partitions: 23,106 primes (0.0%)
+  11 partitions: 3,817 primes (0.0%)
+  12 partitions: 476 primes (0.0%)
+  13 partitions: 57 primes (0.0%)
+  14 partitions: 2 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 11:26:22,276 - INFO - Resuming from prime 8027723749 (start_idx: 369000000) from block files
+Resuming from prime 8027723749 (index 369000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 8027723749
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:07<00:00, 16463.59prime/s, Batches=1000, Batch Size=1e+4, Results=20263]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 758 block files
+Total primes processed: 379,000,000
+Processing blocks in batches...
+  0 partitions: 65,452,979 primes (17.3%)
+  1 partition: 108,688,968 primes (28.7%)
+  2 partitions: 94,365,888 primes (24.9%)
+  3 partitions: 59,094,856 primes (15.6%)
+  4 partitions: 30,349,219 primes (8.0%)
+  5 partitions: 13,458,795 primes (3.6%)
+  6 partitions: 5,205,780 primes (1.4%)
+  7 partitions: 1,740,189 primes (0.5%)
+  8 partitions: 495,649 primes (0.1%)
+  9 partitions: 119,469 primes (0.0%)
+  10 partitions: 23,751 primes (0.0%)
+  11 partitions: 3,913 primes (0.0%)
+  12 partitions: 484 primes (0.0%)
+  13 partitions: 58 primes (0.0%)
+  14 partitions: 2 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 11:38:59,126 - INFO - Resuming from prime 8255916589 (start_idx: 379000000) from block files
+Resuming from prime 8255916589 (index 379000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 8255916589
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:07<00:00, 16468.07prime/s, Batches=1000, Batch Size=1e+4, Results=20058]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 778 block files
+Total primes processed: 389,000,000
+Processing blocks in batches...
+  0 partitions: 67,234,489 primes (17.3%)
+  1 partition: 111,581,430 primes (28.7%)
+  2 partitions: 96,840,720 primes (24.9%)
+  3 partitions: 60,627,941 primes (15.6%)
+  4 partitions: 31,130,896 primes (8.0%)
+  5 partitions: 13,802,134 primes (3.5%)
+  6 partitions: 5,337,881 primes (1.4%)
+  7 partitions: 1,784,808 primes (0.5%)
+  8 partitions: 508,203 primes (0.1%)
+  9 partitions: 122,551 primes (0.0%)
+  10 partitions: 24,382 primes (0.0%)
+  11 partitions: 4,001 primes (0.0%)
+  12 partitions: 501 primes (0.0%)
+  13 partitions: 61 primes (0.0%)
+  14 partitions: 2 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 11:51:38,865 - INFO - Resuming from prime 8484400081 (start_idx: 389000000) from block files
+Resuming from prime 8484400081 (index 389000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 8484400081
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:12<00:00, 16331.25prime/s, Batches=1000, Batch Size=1e+4, Results=21022]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 798 block files
+Total primes processed: 399,000,000
+Processing blocks in batches...
+  0 partitions: 68,967,407 primes (17.3%)
+  1 partition: 114,429,823 primes (28.7%)
+  2 partitions: 99,313,373 primes (24.9%)
+  3 partitions: 62,186,244 primes (15.6%)
+  4 partitions: 31,940,378 primes (8.0%)
+  5 partitions: 14,166,936 primes (3.6%)
+  6 partitions: 5,481,945 primes (1.4%)
+  7 partitions: 1,834,723 primes (0.5%)
+  8 partitions: 522,929 primes (0.1%)
+  9 partitions: 126,307 primes (0.0%)
+  10 partitions: 25,199 primes (0.0%)
+  11 partitions: 4,148 primes (0.0%)
+  12 partitions: 520 primes (0.0%)
+  13 partitions: 65 primes (0.0%)
+  14 partitions: 3 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 12:04:29,712 - INFO - Resuming from prime 8713149233 (start_idx: 399000000) from block files
+Resuming from prime 8713149233 (index 399000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 8713149233
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:12<00:00, 16334.87prime/s, Batches=1000, Batch Size=1e+4, Results=21024]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 818 block files
+Total primes processed: 409,000,000
+Processing blocks in batches...
+  0 partitions: 70,666,882 primes (17.3%)
+  1 partition: 117,247,552 primes (28.7%)
+  2 partitions: 101,786,032 primes (24.9%)
+  3 partitions: 63,760,860 primes (15.6%)
+  4 partitions: 32,768,857 primes (8.0%)
+  5 partitions: 14,547,043 primes (3.6%)
+  6 partitions: 5,634,238 primes (1.4%)
+  7 partitions: 1,887,842 primes (0.5%)
+  8 partitions: 539,122 primes (0.1%)
+  9 partitions: 130,557 primes (0.0%)
+  10 partitions: 26,105 primes (0.0%)
+  11 partitions: 4,301 primes (0.0%)
+  12 partitions: 537 primes (0.0%)
+  13 partitions: 69 primes (0.0%)
+  14 partitions: 3 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 12:17:21,171 - INFO - Resuming from prime 8942177977 (start_idx: 409000000) from block files
+Resuming from prime 8942177977 (index 409000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 8942177977
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:13<00:00, 16295.86prime/s, Batches=1000, Batch Size=1e+4, Results=20840]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 838 block files
+Total primes processed: 419,000,000
+Processing blocks in batches...
+  0 partitions: 72,372,646 primes (17.3%)
+  1 partition: 120,072,522 primes (28.7%)
+  2 partitions: 104,257,249 primes (24.9%)
+  3 partitions: 65,331,211 primes (15.6%)
+  4 partitions: 33,594,683 primes (8.0%)
+  5 partitions: 14,923,402 primes (3.6%)
+  6 partitions: 5,785,756 primes (1.4%)
+  7 partitions: 1,940,712 primes (0.5%)
+  8 partitions: 554,881 primes (0.1%)
+  9 partitions: 134,736 primes (0.0%)
+  10 partitions: 27,094 primes (0.0%)
+  11 partitions: 4,467 primes (0.0%)
+  12 partitions: 566 primes (0.0%)
+  13 partitions: 72 primes (0.0%)
+  14 partitions: 3 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 12:30:18,528 - INFO - Resuming from prime 9171464807 (start_idx: 419000000) from block files
+Resuming from prime 9171464807 (index 419000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 9171464807
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:14<00:00, 16274.45prime/s, Batches=1000, Batch Size=1e+4, Results=20866]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 858 block files
+Total primes processed: 429,000,000
+Processing blocks in batches...
+  0 partitions: 74,083,459 primes (17.3%)
+  1 partition: 122,901,144 primes (28.6%)
+  2 partitions: 106,725,969 primes (24.9%)
+  3 partitions: 66,901,518 primes (15.6%)
+  4 partitions: 34,417,631 primes (8.0%)
+  5 partitions: 15,298,260 primes (3.6%)
+  6 partitions: 5,935,580 primes (1.4%)
+  7 partitions: 1,993,256 primes (0.5%)
+  8 partitions: 570,929 primes (0.1%)
+  9 partitions: 138,888 primes (0.0%)
+  10 partitions: 28,049 primes (0.0%)
+  11 partitions: 4,637 primes (0.0%)
+  12 partitions: 602 primes (0.0%)
+  13 partitions: 72 primes (0.0%)
+  14 partitions: 6 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 12:43:19,781 - INFO - Resuming from prime 9400949587 (start_idx: 429000000) from block files
+Resuming from prime 9400949587 (index 429000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 9400949587
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:16<00:00, 16209.04prime/s, Batches=1000, Batch Size=1e+4, Results=20675]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 878 block files
+Total primes processed: 439,000,000
+Processing blocks in batches...
+  0 partitions: 75,797,121 primes (17.3%)
+  1 partition: 125,731,728 primes (28.6%)
+  2 partitions: 109,197,032 primes (24.9%)
+  3 partitions: 68,470,454 primes (15.6%)
+  4 partitions: 35,237,714 primes (8.0%)
+  5 partitions: 15,671,171 primes (3.6%)
+  6 partitions: 6,085,426 primes (1.4%)
+  7 partitions: 2,045,274 primes (0.5%)
+  8 partitions: 586,648 primes (0.1%)
+  9 partitions: 142,943 primes (0.0%)
+  10 partitions: 28,975 primes (0.0%)
+  11 partitions: 4,802 primes (0.0%)
+  12 partitions: 629 primes (0.0%)
+  13 partitions: 77 primes (0.0%)
+  14 partitions: 6 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 12:56:28,347 - INFO - Resuming from prime 9630702359 (start_idx: 439000000) from block files
+Resuming from prime 9630702359 (index 439000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 9630702359
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:17<00:00, 16190.36prime/s, Batches=1000, Batch Size=1e+4, Results=20607]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 898 block files
+Total primes processed: 449,000,000
+Processing blocks in batches...
+  0 partitions: 77,516,431 primes (17.3%)
+  1 partition: 128,566,296 primes (28.6%)
+  2 partitions: 111,667,786 primes (24.9%)
+  3 partitions: 70,033,240 primes (15.6%)
+  4 partitions: 36,056,960 primes (8.0%)
+  5 partitions: 16,042,898 primes (3.6%)
+  6 partitions: 6,234,736 primes (1.4%)
+  7 partitions: 2,096,886 primes (0.5%)
+  8 partitions: 602,265 primes (0.1%)
+  9 partitions: 146,994 primes (0.0%)
+  10 partitions: 29,832 primes (0.0%)
+  11 partitions: 4,946 primes (0.0%)
+  12 partitions: 645 primes (0.0%)
+  13 partitions: 79 primes (0.0%)
+  14 partitions: 6 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 13:09:49,391 - INFO - Resuming from prime 9860683127 (start_idx: 449000000) from block files
+Resuming from prime 9860683127 (index 449000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 9860683127
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:16<00:00, 16207.74prime/s, Batches=1000, Batch Size=1e+4, Results=20724]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 918 block files
+Total primes processed: 459,000,000
+Processing blocks in batches...
+  0 partitions: 79,237,579 primes (17.3%)
+  1 partition: 131,403,485 primes (28.6%)
+  2 partitions: 114,139,043 primes (24.9%)
+  3 partitions: 71,595,899 primes (15.6%)
+  4 partitions: 36,874,267 primes (8.0%)
+  5 partitions: 16,413,667 primes (3.6%)
+  6 partitions: 6,382,528 primes (1.4%)
+  7 partitions: 2,148,445 primes (0.5%)
+  8 partitions: 617,590 primes (0.1%)
+  9 partitions: 150,924 primes (0.0%)
+  10 partitions: 30,717 primes (0.0%)
+  11 partitions: 5,105 primes (0.0%)
+  12 partitions: 663 primes (0.0%)
+  13 partitions: 82 primes (0.0%)
+  14 partitions: 6 primes (0.0%)
+Using 12 workers (physical cores)
+2025-08-24 13:23:19,016 - INFO - Resuming from prime 10090917877 (start_idx: 459000000) from block files
+Resuming from prime 10090917877 (index 459000000) using separate block files
+Data mode: Separate run files
+Processing 10000000 primes starting from 10090917877
+Batch size: 10000 primes per worker
+Prime partition: 100%|████████████████████████████████████████████████████| 10000000/10000000 [10:31<00:00, 15840.31prime/s, Batches=1000, Batch Size=1e+4, Results=20732]
+
+Completed processing 10000000 primes in 1000 batches
+Results merged and saved
+
+🔄 Integrating 1000 run files into blocks...
+Integrated 10,000,000 primes from runs into blocks.
+  ✅ Integrity OK. Removed 1000 run files.
+
+=== PARTITION SUMMARY (from blocks) ===
+Found 938 block files
+zsh: killed     funbuns -n 10000000 -b 10000
+/home/erpage159/fluid/research/funbuns/.pixi/envs/default/lib/python3.12/multiprocessing/resource_tracker.py:279: UserWarning: resource_tracker: There appear to be 1 leaked semaphore objects to clean up at shutdown
+  warnings.warn('resource_tracker: There appear to be %d '
+    ♥ 13:36:51   CPU: 14.24% | RAM: 2/15GB   3h 0m 30s 629ms                                                                       master ≡    ~3 🐍 (funbuns)
+  home/fluid/research/funbuns   

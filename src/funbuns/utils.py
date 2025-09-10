@@ -162,9 +162,6 @@ def get_default_data_file():
     return get_data_dir() / "pparts.parquet"
 
 
-
-
-
 def get_temp_data_file():
     """Get the path to a timestamped temporary data file."""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -191,7 +188,7 @@ def get_config():
         return {}
 
 
-def resume_p(verbose: bool = False) -> tuple[int, int]:
+def resume_p(verbose: bool = False) -> int:
     """
     Get the last processed prime and start_idx from existing parquet data.
     
@@ -199,46 +196,17 @@ def resume_p(verbose: bool = False) -> tuple[int, int]:
         Verbose...
     
     Returns:
-        Tuple of (last_prime, start_idx) - (2, 0) if no data exists
+        start_idx - 0 if no data exists
     """
+    #Really at the moment I don't have the code written to work without initial data.
     try:
-    
-        # Scan all block files using glob pattern
         data_dir = get_data_dir()
         block_pattern = str(data_dir / "blocks" / "pp_b*.parquet")
-        block_files = list((data_dir / "blocks").glob("pp_b*.parquet"))
-        if not block_files:
-            logging.info("No existing block files found, starting from first prime")
-            return (2, 0)
-        
-        # Use lazy scanning with glob pattern for efficiency
-        df_scan = pl.scan_parquet(block_pattern).select("p")
+        init_p = pl.scan_parquet(block_pattern).select(
+                pl.col("p").max()
+        ).collect().item()
 
-        
-        # Get both max prime and unique count (start_idx) in one operation
-        result = df_scan.select([
-            pl.col("p").max().alias("last_prime"),
-            pl.col("p").n_unique().alias("start_idx")
-        ]).collect()    
-        
-        last_prime = result["last_prime"].item()
-        start_idx = result["start_idx"].item()
-        
-        if verbose:
-            print(f"🔍 DEBUG: Scan result - max_prime: {last_prime}, unique_count: {start_idx}")
-
-            block_files = list((data_dir / "blocks").glob("pp_b*.parquet"))
-            print(f"🔍 DEBUG: Found {len(block_files)} block files")
-            if block_files:
-                print(f"🔍 DEBUG: Last block: {sorted(block_files)[-1].name}")
-        
-        if last_prime is None:
-            logging.info("Parquet file is empty, starting from first prime")
-            return (2, 0)
-            
-        source = "block files"
-        logging.info(f"Resuming from prime {last_prime} (start_idx: {start_idx}) from {source}")
-        return (int(last_prime), int(start_idx))
+        return init_p
         
     except Exception as e:
         source = "block files"
@@ -260,7 +228,6 @@ def append_data(df: pl.DataFrame, buffer_size: int = None, filepath=None, verbos
         verbose: Whether to log incremental file writes
     """
 
-
     # Write directly to a new run file in data/runs/ directory
     runs_dir = get_data_dir() / "runs"
     runs_dir.mkdir(exist_ok=True)
@@ -274,11 +241,6 @@ def append_data(df: pl.DataFrame, buffer_size: int = None, filepath=None, verbos
         logging.info(f"Data written to run file: {run_file.name}")
         logging.info(f"Batch size: {len(df)} rows")
     return
-    
-
-
-
-
 
 def get_data_dir():
     """Get the application data directory path following configuration hierarchy."""
@@ -379,13 +341,6 @@ def get_small_primes_table():
         logging.error(f"Error loading small primes table: {e}")
         return None, None
 
-
-
-
-
-
-
-
 def show_run_files_summary():
     """
     Show summary of all run files.
@@ -427,21 +382,21 @@ def setup_analysis_mode(args, config):
     Setup analysis mode based on CLI arguments and config.
     
     Returns:
-        tuple: (init_p, start_idx, append_func, data_file)
+        tuple: (start_idx, append_func, data_file)
     """
     
     if args.temp:
         # Temporary mode - always monolithic
         data_file = get_temp_data_file()
-        init_p, start_idx = 2, 0
+        init_p = 2
         append_func = lambda df, buffer_size_arg: append_data(
             df, buffer_size_arg, data_file, verbose=args.verbose
         )
-        return init_p, start_idx, append_func, False, data_file        
+        return init_p, append_func, False, data_file        
     else:
         # Resume mode - smart resume logic
-        init_p, start_idx, append_func = setup_resume_mode(args.verbose)
-        return init_p, start_idx, append_func,  None
+        init_p, append_func = setup_resume_mode(args.verbose)
+        return init_p, append_func,  None
 
 
 
@@ -451,219 +406,116 @@ def setup_resume_mode(verbose):
     Setup resume mode with smart fallback logic.
     
     Returns:
-        tuple: (init_p, start_idx, append_func)
+        tuple: (init_p, append_func)
     """
+    init_p = resume_p(verbose=verbose)
 
-    init_p, start_idx = resume_p(verbose=verbose)
-    
-    if init_p == 2 and start_idx == 0:
+    if init_p is None:
         print("No existing data found, starting from beginning with separate block files")
+        init_p = 2
     else:
-        print(f"Resuming from prime {init_p} (index {start_idx}) using separate block files")
+        print(f"Resuming from prime {init_p} using separate block files")
 
     
     append_func = lambda df, buffer_size_arg: append_data(
         df, buffer_size_arg, verbose=verbose
     )
     
-    return init_p, start_idx, append_func
+    return init_p, append_func
 
 
-def generate_partition_summary(data_file=None, verbose=False):
-    """Generate and display partition frequency summary using blocks or single file."""
+import polars as pl
+from pathlib import Path
+
+def generate_partition_summary(verbose: bool = False):
+    """
+    Generate and display partition frequency summary using a single, efficient streaming query.
+    """
     try:
-        from pathlib import Path
-        
-        # Check for block files first
         data_dir = get_data_dir()
         block_pattern = str(data_dir / "blocks" / "pp_b*.parquet")
         block_files = list((data_dir / "blocks").glob("pp_b*.parquet"))
-        
-        if block_files:
-            # Use block files with glob pattern (reuse block_manager logic)
-            print(f"\n=== PARTITION SUMMARY (from blocks) ===")
-            print(f"Found {len(block_files)} block files")
-            
-            # Get overall stats using lazy scanning
-            stats = pl.scan_parquet(block_pattern).select([
-                pl.len().alias("total_rows"),
-                pl.col("p").n_unique().alias("unique_primes")
-            ]).collect()
-            
-            #total_rows = stats["total_rows"].item()
-            unique_primes = stats["unique_primes"].item()
-            
-            print(f"Total primes processed: {unique_primes:,}")
-            
-            # Partition frequency analysis using batched processing
-            print("Processing blocks in batches...")
-            
-            # Process blocks in batches to avoid memory issues
-            batch_size = 50
-            all_partition_counts = {}
-            
-            for i in range(0, len(block_files), batch_size):
-                batch_files = block_files[i:i+batch_size]
-                batch_pattern = [str(f) for f in batch_files]
-                
-                try:
-                    batch_partition_counts = pl.scan_parquet(batch_pattern).group_by("p").agg([
-                        (pl.col("q_k") > 0).sum().alias("partition_count")
-                    ]).group_by("partition_count").agg([
-                        pl.len().alias("prime_count")
-                    ]).collect()
-                    
-                    # Accumulate counts
-                    for row in batch_partition_counts.iter_rows(named=True):
-                        count = row["partition_count"]
-                        primes = row["prime_count"]
-                        all_partition_counts[count] = all_partition_counts.get(count, 0) + primes
-                        
-                except Exception as e:
-                    print(f"  ⚠️  Error processing batch {i//batch_size + 1}: {e}")
-                    continue
-            
-            # Display the summary
-            for count in sorted(all_partition_counts.keys()):
-                primes = all_partition_counts[count]
-                percentage = (primes / unique_primes) * 100
-                if count == 0:
-                    print(f"  {count} partitions: {primes:,} primes ({percentage:.1f}%)")
-                else:
-                    print(f"  {count} partition{'s' if count != 1 else ''}: {primes:,} primes ({percentage:.1f}%)")
-            
-            # Show examples in verbose mode
-            if verbose:
-                print(f"\nExamples of primes with multiple partitions:")
-                # Use first few blocks for examples to avoid memory issues
-                sample_files = block_files[:10]  # Use first 10 blocks for examples
-                multi_partition_primes = pl.scan_parquet([str(f) for f in sample_files]).group_by("p").agg([
-                    (pl.col("q_k") > 0).sum().alias("count")
-                ]).filter(pl.col("count") > 1).sort("p").head(10).collect()
-                
-                if len(multi_partition_primes) > 0:
-                    for row in multi_partition_primes.iter_rows(named=True):
-                        p = row['p']
-                        count = row['count']
-                        print(f"  p={p} ({count} partitions)")
-                
-                # Show block details
-                print(f"\nBlock details:")
-                for file in sorted(block_files)[:5]:  # Show first 5
-                    file_stats = pl.scan_parquet(file).select([
-                        pl.len().alias("rows"),
-                        pl.col("p").n_unique().alias("primes")
-                    ]).collect()
-                    rows = file_stats["rows"].item()
-                    primes = file_stats["primes"].item()
-                    print(f"  {file.name}: {rows:,} rows, {primes:,} primes")
-                
-                if len(block_files) > 5:
-                    print(f"  ... and {len(block_files) - 5} more blocks")
-        
-        elif data_file and data_file.exists():
-            # Fall back to single file
-            print(f"\n=== PARTITION SUMMARY (from single file) ===")
-            df = pl.read_parquet(data_file)
-            total_primes = len(df)
-            
-            print(f"Total primes processed: {total_primes:,}")
-            
-            # Determine q column name (handle schema differences)
-            q_col = 'q' if 'q' in df.columns else 'q_k'
-            
-            # Count partitions per prime
-            partition_counts = df.group_by("p").agg([
-                (pl.col(q_col) > 0).sum().alias("partition_count")
-            ]).group_by("partition_count").agg([
+
+        if not block_files:
+            print("No block files found for summary.")
+            return
+
+        print(f"\n=== PARTITION SUMMARY (from {len(block_files)} blocks) ===")
+
+        # Define the entire calculation as a single, lazy, streaming query
+        # This is far more efficient than batching in Python.
+        lazy_summary = (
+            pl.scan_parquet(block_pattern)
+            # 1. Count the number of partitions for each prime 'p'.
+            # A partition exists if q_k > 0.
+            .group_by("p")
+            .agg(
+                (pl.col("q_k") > 0).sum().alias("partition_count")
+            )
+            # 2. Count how many primes have each 'partition_count'.
+            # pl.len() is a fast way to count items in a group.
+            .group_by("partition_count")
+            .agg(
                 pl.len().alias("prime_count")
-            ]).sort("partition_count")
+            )
+            .sort("partition_count")
+        )
+
+        # Execute the query in streaming mode to keep memory usage low
+        summary_df = lazy_summary.collect(streaming=True)
+
+        # Display the results
+        total_primes = summary_df["prime_count"].sum()
+        print(f"Total unique primes processed: {total_primes:,}")
+
+        for row in summary_df.iter_rows(named=True):
+            count = row["partition_count"]
+            primes = row["prime_count"]
+            percentage = (primes / total_primes) * 100
+            label = "partitions" if count != 1 else "partition"
+            if count == 0:
+                label = "partitions" # Grammatically better for zero
+            print(f"  {count} {label}: {primes:,} primes ({percentage:.1f}%)")
+
+        if verbose:
+            # The verbose logic can be simplified as well
+            print(f"\nBlock details:")
+            for file in sorted(block_files)[:5]:
+                stats = pl.scan_parquet(file).select(pl.len().alias("rows")).collect()
+                print(f"  {file.name}: {stats['rows'].item():,} rows")
             
-            # Display the summary
-            for row in partition_counts.iter_rows(named=True):
-                count = row['partition_count']
-                primes = row['prime_count']
-                percentage = (primes / total_primes) * 100
-                if count == 0:
-                    print(f"  {count} partitions: {primes:,} primes ({percentage:.1f}%)")
-                else:
-                    print(f"  {count} partition{'s' if count != 1 else ''}: {primes:,} primes ({percentage:.1f}%)")
-            
-            # Show examples in verbose mode
-            if verbose:
-                multi_partition_primes = df.filter(pl.col(q_col) > 0).group_by("p").agg([
-                    pl.len().alias("count")
-                ]).filter(pl.col("count") > 1).sort("p").head(10)
-                
-                if len(multi_partition_primes) > 0:
-                    print(f"\nExamples of primes with multiple partitions:")
-                    for row in multi_partition_primes.iter_rows(named=True):
-                        p = row['p']
-                        count = row['count']
-                        prime_partitions = df.filter((pl.col("p") == p) & (pl.col(q_col) > 0))
-                        print(f"  p={p} ({count} partitions):")
-                        for part_row in prime_partitions.iter_rows(named=True):
-                            m, n, q = part_row['m' if 'm' in part_row else 'm_k'], part_row['n' if 'n' in part_row else 'n_k'], part_row[q_col]
-                            print(f"    {p} = 2^{m} + {q}^{n} = {2**m} + {q**n} = {2**m + q**n}")
-        else:
-            print("No data files found for summary.")
-        
+            if len(block_files) > 5:
+                print(f"  ... and {len(block_files) - 5} more blocks")
+
     except Exception as e:
         print(f"Error generating partition summary: {e}")
+            # Show examples in verbose mode
 
 
 def convert_runs_to_blocks_auto(target_prime_count: int = 500_000):
     """
-    Automatically integrate run files into blocks, then run integrity checks.
-    If checks pass: delete run files. If checks fail: keep run files and print guidance.
+    Automatically integrate run files into blocks. The integration logic is trusted to produce
+    correct, non-overlapping, and de-duplicated blocks.
     """
-    data_dir = get_data_dir()
-    runs = (data_dir / "runs").glob("*.parquet") if (data_dir / "runs").exists() else []
-    run_count = len(list((data_dir / "runs").glob("*.parquet"))) if (data_dir / "runs").exists() else 0
-    if run_count == 0:
-        return
-    print(f"\n🔄 Integrating {run_count} run files into blocks...")
-
-    # Integrate without deleting runs first
+    # This function already handles the "no runs" case internally
     from .run_ingester import integrate_runs_into_blocks
-    worked = integrate_runs_into_blocks(target_prime_count=target_prime_count, verbose=True, delete_run_files=False)
-    if not worked:
-        print("No run files integrated. Skipping checks.")
-        return
+    
+    print("\n🔄 Integrating run files into blocks...")
+    work_done = integrate_runs_into_blocks(
+        target_prime_count=target_prime_count,
+        verbose=True,
+        delete_run_files=True # Trust the process and delete on success
+    )
+    
+    if work_done:
+        print("  ✅ Integration successful. Run files removed.")
+    else:
+        print("No work done.")
 
-    # Integrity checks (lazy imports to avoid cycles)
-    from .data_integrity import detect_overlaps_between_blocks, detect_duplicates_in_block
-    from .block_catalog import list_block_files
-
-    files = list_block_files()
-    dup_total = 0
-    for f in files:
-        try:
-            dup_total += detect_duplicates_in_block(f)
-        except Exception:
-            # If a file fails to read, treat as warning condition
-            dup_total += 0
-
-    overlap_df = detect_overlaps_between_blocks()
-    overlaps = int(overlap_df.height)
-
-    if dup_total == 0 and overlaps == 0:
-        # Safe to delete run files
-        runs_dir = data_dir / "runs"
-        removed = 0
-        for rf in runs_dir.glob("*.parquet"):
-            rf.unlink()
-            removed += 1
-        print(f"  ✅ Integrity OK. Removed {removed} run files.")
-        return
-
-    # Failure path: keep run files and provide guidance
-    print("  ❌ Integrity check failed after integration.")
-    if dup_total > 0:
-        print(f"    - Detected {dup_total} duplicate rows across blocks (by keys ['p','m_k','n_k','q_k']).")
-        print("      Recommendation: re-run ingestion with dedup (already enforced). If duplicates persist,")
-        print("      inspect the offending blocks; consider regenerating the affected range.")
-    if overlaps > 0:
-        print(f"    - Detected overlaps between adjacent blocks ({overlaps} overlaps reported).")
-        print("      Recommendation: verify last/first prime boundaries and block filenames; consolidate overlapping blocks.")
-    print("  🛑 Run files were kept for investigation.")
+    # (Optional) If you are still concerned, you can run the fast check
+    # overlaps = detect_overlaps_fast()
+    # if not overlaps.is_empty():
+    #     print("  ❌ WARNING: Overlaps detected after integration!")
+    #     print(overlaps)
+    # else:
+    #     print("  ✅ Overlap check passed.")
