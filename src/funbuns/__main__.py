@@ -80,7 +80,7 @@ def main():
     
     # Determine number of workers
     if args.processes is not None:
-        cores = args.proccesses
+        cores = args.processes
         print(f"Using {cores} workers (user-specified)")
     else:
         cores = psutil.cpu_count(logical=False)

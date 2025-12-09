@@ -392,7 +392,7 @@ def setup_analysis_mode(args, config):
         append_func = lambda df, buffer_size_arg: append_data(
             df, buffer_size_arg, data_file, verbose=args.verbose
         )
-        return init_p, append_func, False, data_file        
+        return init_p, append_func, data_file        
     else:
         # Resume mode - smart resume logic
         init_p, append_func = setup_resume_mode(args.verbose)

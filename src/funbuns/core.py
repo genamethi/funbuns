@@ -274,7 +274,7 @@ def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, ver
                 
                 # Process  batch - returns (DataFrame, timing_data)
                 #Reimplement with more robust profiling: results_df , timing_data = pool.apply(worker_batch, (prime_batch, verbose))
-                results_df= pool.apply(worker_batch, (prime_batch, verbose))
+                results_df= pool.apply_async(worker_batch, (prime_batch, verbose))
                 
                 
                 # Collect timing data
