@@ -230,88 +230,133 @@ class PPConsumer:
         """Flush any remaining DataFrames."""
         self._flush_results()
 
-
-def run_gen(init_p, num_primes, batch_size, cores, buffer_size, append_data, verbose=False):
+class PPManager:
     """
-    Main analysis runner - handles all processing logic.
-    
-    Args:
-        init_p: Last prime from data or first prime, who knows!
-        num_primes: Number of primes to process
-        batch_size: Primes per worker batch
-        cores: Number of worker processes
-        buffer_size: Consumer buffer size
-        append_data: Save callback function
-        verbose: Enable verbose output for profiling
-        start_idx: Starting index for prime generation (from utils.resume_p)
+    Stateful manager for prime power partition processing with multi-threaded worker support.
+
+    Maintains state for batch processing, consumer management, and worker pool coordination.
     """
-    import multiprocessing as mp
-    from tqdm import tqdm
-    
-    # Create batch feeder and consumer
-    batch_feeder = PPBatchFeeder(init_p, num_primes, batch_size, verbose)
-    consumer = PPConsumer(buffer_size, append_data) 
+    def __init__(self, init_p, num_primes, batch_size, cores, buffer_size, append_data, verbose=False):
+        """Initialize manager with all processing parameters as instance state."""
+        self.init_p = init_p or 2
+        self.num_primes = num_primes
+        self.batch_size = batch_size
+        self.cores = cores
+        self.buffer_size = buffer_size
+        self.append_data = append_data
+        self.verbose = verbose
 
-    
-    print(f"Processing {num_primes} primes starting from {init_p}")
-    print(f"Batch size: {batch_size} primes per worker")
-    
-    # Set spawn method to avoid fork issues
-    mp.set_start_method('spawn', force=True)
-    
-    ## Initialize timing collection
-    #all_timing_data = []
-    
-    # Process with multiprocessing and progress bar
-    with mp.Pool(cores) as pool:
-        batches_processed = 0
-        primes_processed = 0
-        
-        with tqdm(total=num_primes, desc="Prime partition", unit="prime") as pbar:
-            for prime_batch in batch_feeder.generate_batches():
-                if not prime_batch:  # Empty batch means we're done
-                    break
-                
-                # Process  batch - returns (DataFrame, timing_data)
-                #Reimplement with more robust profiling: results_df , timing_data = pool.apply(worker_batch, (prime_batch, verbose))
-                results_df= pool.apply_async(worker_batch, (prime_batch, verbose))
-                
-                
-                # Collect timing data
-                #all_timing_data.extend(timing_data)
-                
-                # Pass DataFrame directly to consumer
-                consumer.add_results(results_df)
-                
-                # Update progress
-                primes_in_batch = len(prime_batch)
-                primes_processed += primes_in_batch
-                batches_processed += 1
-                pbar.update(primes_in_batch)
-                pbar.set_postfix({
-                    "Batches": batches_processed,
-                    "Batch Size": primes_in_batch,
-                    "Results": results_df.height
-                })
-    
-    # Finalize any remaining results
-    consumer.finalize()
-    
-    # Process and save timing data
-    #if all_timing_data and verbose:
-    #    timing_collector = TimingCollector(verbose=verbose)
-    #    timing_collector.timings = all_timing_data
-    #    timing_collector.save_debug_log()
-    #    timing_collector.print_summary()
-    
-    print(f"\nCompleted processing {primes_processed} primes in {batches_processed} batches")
-    print(f"Results merged and saved")
-    
-    # Automatically convert run files to blocks if using separate runs
-    convert_runs_to_blocks_auto()
+        # State tracking - initialized during run_gen
+        self.batch_feeder = None
+        self.consumer = None
+        self.pool = None
+        self.batches_processed = 0
+        self.primes_processed = 0
 
-    #if verbose and all_timing_data:
-    #    print(f"Timing data collected: {len(all_timing_data)} operations")
+    def run_gen(self):
+        """
+        Main analysis runner - handles all processing logic using instance state.
+
+        Uses instance variables for all configuration and maintains state tracking
+        for batches_processed, primes_processed, batch_feeder, consumer, and pool.
+        """
+        import multiprocessing as mp
+        from tqdm import tqdm
+
+        # Create batch feeder and consumer, store as instance state
+        self.batch_feeder = PPBatchFeeder(self.init_p, self.num_primes, self.batch_size, self.verbose)
+        self.consumer = PPConsumer(self.buffer_size, self.append_data)
+
+
+        print(f"Processing {self.num_primes} primes starting from {self.init_p}")
+        print(f"Batch size: {self.batch_size} primes per worker")
+
+        # Set spawn method to avoid fork issues
+        mp.set_start_method('spawn', force=True)
+
+        ## Initialize timing collection
+        #all_timing_data = []
+
+        # Process with multiprocessing and progress bar
+        with mp.Pool(self.cores) as pool:
+            self.pool = pool  # Store pool reference in instance state
+            self.batches_processed = 0
+            self.primes_processed = 0
+
+            with tqdm(total=self.num_primes, desc="Prime partition", unit="prime") as pbar:
+                for prime_batch in self.batch_feeder.generate_batches():
+                    if not prime_batch:  # Empty batch means we're done
+                        break
+
+                    # Process batch - returns DataFrame
+                    # FIX: Call .get() on AsyncResult to retrieve the actual DataFrame
+                    async_result = pool.apply_async(worker_batch, (prime_batch, self.verbose))
+                    results_df = async_result.get()
+
+
+                    # Collect timing data
+                    #all_timing_data.extend(timing_data)
+
+                    # Pass DataFrame directly to consumer
+                    self.consumer.add_results(results_df)
+
+                    # Update progress
+                    primes_in_batch = len(prime_batch)
+                    self.primes_processed += primes_in_batch
+                    self.batches_processed += 1
+                    pbar.update(primes_in_batch)
+                    pbar.set_postfix({
+                        "Batches": self.batches_processed,
+                        "Batch Size": primes_in_batch,
+                        "Results": results_df.height
+                    })
+
+        # Finalize any remaining results
+        self.consumer.finalize()
+
+        # Process and save timing data
+        #if all_timing_data and self.verbose:
+        #    timing_collector = TimingCollector(verbose=self.verbose)
+        #    timing_collector.timings = all_timing_data
+        #    timing_collector.save_debug_log()
+        #    timing_collector.print_summary()
+
+        print(f"\nCompleted processing {self.primes_processed} primes in {self.batches_processed} batches")
+        print(f"Results merged and saved")
+
+        # Automatically convert run files to blocks if using separate runs
+        convert_runs_to_blocks_auto()
+
+        #if self.verbose and all_timing_data:
+        #    print(f"Timing data collected: {len(all_timing_data)} operations")
+
+    def get_status(self):
+        """
+        Get current processing status.
+
+        Returns:
+            dict: Status dictionary with current state information
+        """
+        return {
+            'init_p': self.init_p,
+            'num_primes': self.num_primes,
+            'batch_size': self.batch_size,
+            'cores': self.cores,
+            'batches_processed': self.batches_processed,
+            'primes_processed': self.primes_processed,
+            'progress_pct': (self.primes_processed / self.num_primes * 100) if self.num_primes > 0 else 0,
+            'has_batch_feeder': self.batch_feeder is not None,
+            'has_consumer': self.consumer is not None,
+            'has_pool': self.pool is not None
+        }
+
+    def reset(self):
+        """Reset state for a new run (useful for managing multiple sequential runs)."""
+        self.batch_feeder = None
+        self.consumer = None
+        self.pool = None
+        self.batches_processed = 0
+        self.primes_processed = 0
 
 
 

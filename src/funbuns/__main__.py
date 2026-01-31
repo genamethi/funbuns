@@ -4,7 +4,7 @@ Main entry point for prime power partition analysis.
 
 import argparse
 import psutil
-from .core import run_gen
+from .core import PPManager
 from .utils import setup_logging, get_config, setup_analysis_mode, generate_partition_summary
 from .dataprep import prepare_prime_powers
 from .viewer import generate_dashboard
@@ -100,8 +100,10 @@ def main():
     
     if args.temp:
         print(f"Running in temporary mode: {data_file}")
-    
-    run_gen(init_p, args.num_primes, args.batch_size, cores, buffer_size, append_func, args.verbose)
+
+    # Create PPManager instance and run
+    manager = PPManager(init_p, args.num_primes, args.batch_size, cores, buffer_size, append_func, args.verbose)
+    manager.run_gen()
     
     # Show partition summary
     #if args.temp:

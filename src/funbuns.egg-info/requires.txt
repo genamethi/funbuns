@@ -1,4 +1,0 @@
-sagemath
-polars
-tqdm
-psutil
