@@ -16,7 +16,7 @@ from .utils import get_data_dir
 
 
 # ---------------------------------------------------------------------------
-# Factorization helpers (SageMath)
+# Factorization helpers (SageMath, with optional Rust fast path)
 # ---------------------------------------------------------------------------
 
 def _sage_factor(n: int) -> list[tuple[int, int]]:
@@ -28,6 +28,46 @@ def _sage_factor(n: int) -> list[tuple[int, int]]:
 def _sage_is_prime(n: int) -> bool:
     from sage.all import is_prime
     return is_prime(n)
+
+
+def _has_native() -> bool:
+    """Check if the Rust plugin is available."""
+    try:
+        from . import native_expr  # noqa: F401
+        return True
+    except ImportError:
+        return False
+
+
+_NATIVE_AVAILABLE = None
+
+
+def _use_native() -> bool:
+    global _NATIVE_AVAILABLE
+    if _NATIVE_AVAILABLE is None:
+        _NATIVE_AVAILABLE = _has_native()
+    return _NATIVE_AVAILABLE
+
+
+def compute_remainder_columns_native(df: pl.DataFrame) -> pl.DataFrame:
+    """Batch-compute omega, big_omega, dominant_share, mu, is_prime_power
+    using the Rust plugin on a column named 'r'. Much faster than row-by-row
+    SageMath for large DataFrames.
+
+    Falls back to SageMath if the plugin is not built.
+    """
+    if not _use_native():
+        raise ImportError("Rust plugin not available. Build with: pixi run build-native")
+
+    from .native_expr import omega, big_omega, dominant_share, mobius, is_prime_power
+
+    return df.with_columns([
+        omega(pl.col('r')).alias('omega'),
+        big_omega(pl.col('r')).alias('big_omega'),
+        dominant_share(pl.col('r')).alias('dominant_share'),
+        mobius(pl.col('r')).alias('mu'),
+        is_prime_power(pl.col('r')).alias('is_prime_power'),
+    ])
 
 
 # ---------------------------------------------------------------------------
@@ -165,19 +205,61 @@ def analyze_obstructed_primes(limit: Optional[int] = None,
     if verbose:
         print(f"Found {len(obstructed_primes)} obstructed primes to analyze")
 
-    rows: list[dict] = []
-    for i, p in enumerate(obstructed_primes):
+    # Build (p, m, r) triples first
+    pm_rows = []
+    for p in obstructed_primes:
         max_m = int(floor(log(p) / log(2)))
         for m in range(1, max_m + 1):
-            profile = compute_remainder_profile(p, m)
-            rows.append(profile)
-        if verbose and (i + 1) % 500 == 0:
-            print(f"  analyzed {i + 1}/{len(obstructed_primes)} primes")
+            pm_rows.append({'p': int(p), 'm': int(m), 'r': int(p - (1 << m))})
 
-    if not rows:
+    if not pm_rows:
         return pl.DataFrame(schema=ANALYSIS_SCHEMA)
 
-    df = pl.DataFrame(rows, schema=ANALYSIS_SCHEMA)
+    # Try native fast path: compute omega/big_omega/dominant_share/mu/is_prime_power
+    # in Rust on the full column at once, then fill in remaining columns via SageMath
+    if _use_native():
+        if verbose:
+            print(f"  Using Rust plugin for batch valuation ({len(pm_rows)} remainders)")
+        base_df = pl.DataFrame(pm_rows)
+        base_df = compute_remainder_columns_native(base_df)
+        # Still need factorization string and dominant_q/dominant_exp from SageMath
+        fac_strs = []
+        dom_qs = []
+        dom_exps = []
+        for i, r in enumerate(base_df['r'].to_list()):
+            if r <= 1:
+                fac_strs.append(str(r) if r == 1 else '')
+                dom_qs.append(r)
+                dom_exps.append(0)
+            else:
+                factors = _sage_factor(r)
+                fac_strs.append('·'.join(
+                    f"{q}^{e}" if e > 1 else str(q) for q, e in factors
+                ))
+                log_r = log(r)
+                shares = [(int(q), int(e), e * log(q) / log_r) for q, e in factors]
+                dq, de, _ = max(shares, key=lambda t: t[2])
+                dom_qs.append(dq)
+                dom_exps.append(de)
+            if verbose and (i + 1) % 5000 == 0:
+                print(f"  factorized {i + 1}/{len(pm_rows)}")
+
+        base_df = base_df.with_columns([
+            pl.Series('dominant_q', dom_qs, dtype=pl.Int64),
+            pl.Series('dominant_exp', dom_exps, dtype=pl.UInt8),
+            pl.Series('factorization', fac_strs, dtype=pl.Utf8),
+        ])
+        df = base_df.select(list(ANALYSIS_SCHEMA.keys()))
+    else:
+        # Pure SageMath fallback
+        rows: list[dict] = []
+        for i, pm in enumerate(pm_rows):
+            profile = compute_remainder_profile(pm['p'], pm['m'])
+            rows.append(profile)
+            if verbose and (i + 1) % 500 == 0:
+                print(f"  analyzed {i + 1}/{len(pm_rows)} remainders")
+        df = pl.DataFrame(rows, schema=ANALYSIS_SCHEMA)
+
     df = df.with_columns(
         pl.col('omega').map_elements(classify_remainder, return_dtype=pl.Utf8).alias('class')
     )
@@ -622,6 +704,195 @@ def lattice_analysis(analysis_df: pl.DataFrame) -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
+# Zipf / Zeta distribution analysis
+# ---------------------------------------------------------------------------
+
+def zipf_analysis_q(verbose: bool = False) -> pl.DataFrame:
+    """Zipf analysis on q_k frequencies from block data.
+
+    Ranks prime bases q by how often they appear as the base in p = 2^m + q^n,
+    then fits Zipf (P(rank=k) ~ k^{-s}) and Mandelbrot (~ (k+b)^{-a}) models.
+
+    The Zipf distribution is the discrete case of the zeta distribution:
+      P(X = k) = k^{-s} / ζ(s)
+    where ζ(s) is the Riemann zeta function. Deviations of the fitted s from
+    the "random integer" baseline (s ≈ 1 for Zipf on factor frequencies)
+    reveal how the additive constraint (subtracting 2^m from primes) distorts
+    the multiplicative structure.
+
+    Returns DataFrame with columns: rank, q, count, log_rank, log_count,
+        zipf_pred, mandelbrot_pred
+    """
+    data_dir = get_data_dir()
+    block_pattern = str(data_dir / "blocks" / "pp_b*.parquet")
+
+    q_freq = (
+        pl.scan_parquet(block_pattern)
+        .filter(pl.col('q_k') > 0)
+        .group_by('q_k')
+        .agg(pl.len().alias('count'))
+        .sort('count', descending=True)
+        .collect(streaming=True)
+        .with_row_index('rank', offset=1)
+    )
+
+    if q_freq.height == 0:
+        return pl.DataFrame()
+
+    # Add log columns for linear regression in log-log space
+    q_freq = q_freq.with_columns([
+        pl.col('rank').cast(pl.Float64).log().alias('log_rank'),
+        pl.col('count').cast(pl.Float64).log().alias('log_count'),
+    ])
+
+    # Fit Zipf: log(count) = -s * log(rank) + c
+    # Simple OLS in log-log space
+    log_r = q_freq['log_rank'].to_numpy()
+    log_c = q_freq['log_count'].to_numpy()
+
+    n = len(log_r)
+    sum_x = log_r.sum()
+    sum_y = log_c.sum()
+    sum_xy = (log_r * log_c).sum()
+    sum_xx = (log_r * log_r).sum()
+
+    s_zipf = -(n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x)
+    c_zipf = (sum_y + s_zipf * sum_x) / n
+
+    # Zipf predictions
+    zipf_pred = np.exp(c_zipf) * q_freq['rank'].to_numpy().astype(float) ** (-s_zipf)
+
+    # Fit Mandelbrot: log(count) = -a * log(rank + b) + c
+    # Grid search over b, then linear fit for a and c
+    best_b = 0.0
+    best_r2 = -np.inf
+    best_a = s_zipf
+    best_c_m = c_zipf
+
+    for b_try in np.arange(0.0, 5.1, 0.25):
+        log_rb = np.log(q_freq['rank'].to_numpy().astype(float) + b_try)
+        sx = log_rb.sum()
+        sy = sum_y
+        sxy = (log_rb * log_c).sum()
+        sxx = (log_rb * log_rb).sum()
+
+        a_try = -(n * sxy - sx * sy) / (n * sxx - sx * sx)
+        c_try = (sy + a_try * sx) / n
+
+        pred = c_try - a_try * log_rb
+        ss_res = ((log_c - pred) ** 2).sum()
+        ss_tot = ((log_c - log_c.mean()) ** 2).sum()
+        r2 = 1 - ss_res / ss_tot if ss_tot > 0 else 0
+
+        if r2 > best_r2:
+            best_r2 = r2
+            best_b = b_try
+            best_a = a_try
+            best_c_m = c_try
+
+    mandelbrot_pred = np.exp(best_c_m) * (q_freq['rank'].to_numpy().astype(float) + best_b) ** (-best_a)
+
+    q_freq = q_freq.with_columns([
+        pl.Series('zipf_pred', zipf_pred),
+        pl.Series('mandelbrot_pred', mandelbrot_pred),
+    ])
+
+    if verbose:
+        print(f"  Zipf fit: s = {s_zipf:.4f} (pure Zipf exponent)")
+        print(f"  Mandelbrot fit: a = {best_a:.4f}, b = {best_b:.2f}, R² = {best_r2:.6f}")
+        print(f"  Zeta interpretation: P(X=k) = k^{{-{s_zipf:.4f}}} / ζ({s_zipf:.4f})")
+        print(f"  Top 10 q values by frequency:")
+        for row in q_freq.head(10).iter_rows(named=True):
+            print(f"    rank {row['rank']:3d}: q={row['q_k']:>8d}, count={row['count']:>10,}")
+
+    return q_freq, {'s_zipf': round(s_zipf, 6),
+                    'a_mandelbrot': round(best_a, 6),
+                    'b_mandelbrot': round(best_b, 4),
+                    'r2_mandelbrot': round(best_r2, 6),
+                    'n_primes': n}
+
+
+def zipf_analysis_factors(analysis_df: pl.DataFrame,
+                          verbose: bool = False) -> tuple[pl.DataFrame, dict]:
+    """Zipf analysis on prime factor frequencies in composite remainders.
+
+    For each remainder r = p - 2^m, its prime factors contribute to a frequency
+    table. This is Satz's "text" analogy: remainders are "sentences" and their
+    prime factors are "words." The frequency-rank relationship reveals whether
+    the additive structure (subtracting 2^m) preserves or distorts the
+    Zipf law that holds for prime factors of generic integers.
+
+    Stratifying by obstructed vs. non-obstructed primes tests whether
+    the obstruction mechanism has a Zipf signature.
+    """
+    # Parse factorizations to count prime factor frequencies
+    factor_counts: dict[int, int] = {}
+    for fac_str in analysis_df['factorization'].to_list():
+        if not fac_str:
+            continue
+        for term in fac_str.split('·'):
+            if '^' in term:
+                base = int(term.split('^')[0])
+                exp = int(term.split('^')[1])
+            else:
+                base = int(term)
+                exp = 1
+            factor_counts[base] = factor_counts.get(base, 0) + exp
+
+    if not factor_counts:
+        return pl.DataFrame(), {}
+
+    # Build ranked DataFrame
+    ranked = sorted(factor_counts.items(), key=lambda x: -x[1])
+    df = pl.DataFrame({
+        'rank': list(range(1, len(ranked) + 1)),
+        'prime': [p for p, _ in ranked],
+        'frequency': [c for _, c in ranked],
+    }).with_columns([
+        pl.col('rank').cast(pl.Float64).log().alias('log_rank'),
+        pl.col('frequency').cast(pl.Float64).log().alias('log_freq'),
+    ])
+
+    # Fit Zipf exponent
+    log_r = df['log_rank'].to_numpy()
+    log_f = df['log_freq'].to_numpy()
+    n = len(log_r)
+
+    sum_x = log_r.sum()
+    sum_y = log_f.sum()
+    sum_xy = (log_r * log_f).sum()
+    sum_xx = (log_r * log_r).sum()
+
+    s = -(n * sum_xy - sum_x * sum_y) / (n * sum_xx - sum_x * sum_x)
+    c = (sum_y + s * sum_x) / n
+
+    zipf_pred = np.exp(c) * df['rank'].to_numpy().astype(float) ** (-s)
+    df = df.with_columns(pl.Series('zipf_pred', zipf_pred))
+
+    # R² for quality
+    pred_log = c - s * log_r
+    ss_res = ((log_f - pred_log) ** 2).sum()
+    ss_tot = ((log_f - log_f.mean()) ** 2).sum()
+    r2 = float(1 - ss_res / ss_tot) if ss_tot > 0 else 0.0
+
+    params = {
+        's_zipf': round(float(s), 6),
+        'r2': round(r2, 6),
+        'n_distinct_factors': n,
+        'total_factor_occurrences': sum(factor_counts.values()),
+    }
+
+    if verbose:
+        print(f"  Factor Zipf: s = {s:.4f}, R² = {r2:.6f}")
+        print(f"  {n} distinct primes, {sum(factor_counts.values()):,} total occurrences")
+        print(f"  Top 10:")
+        for row in df.head(10).iter_rows(named=True):
+            print(f"    rank {row['rank']:3d}: p={row['prime']:>6d}, freq={row['frequency']:>8,}")
+
+    return df, params
+
+
+# ---------------------------------------------------------------------------
 # Persistence / I/O
 # ---------------------------------------------------------------------------
 
@@ -655,15 +926,33 @@ def run_ladic_analysis(limit: Optional[int] = None,
     3. Compute near-miss scores
     4. ℓ-adic filtration
     5. Erdős–Kac comparison
-    6. Save results
+    6. Zipf / zeta distribution analysis
+    7. Save results
     """
     if filtration_primes is None:
         filtration_primes = [2, 3, 5, 7, 11, 13]
 
     print("=== ℓ-adic Diophantine Analysis ===\n")
 
-    # Step 1: Analyze obstructed primes
-    print("[1/5] Analyzing obstructed primes...")
+    # Step 1: Zipf analysis on q_k from block data (no factorization needed)
+    print("[1/7] Zipf / zeta analysis on q_k frequencies...")
+    try:
+        q_zipf_df, q_zipf_params = zipf_analysis_q(verbose=verbose)
+        if q_zipf_params:
+            s = q_zipf_params['s_zipf']
+            print(f"  Zipf exponent s = {s:.4f}")
+            print(f"  Zeta interpretation: P(rank=k) = k^{{-{s:.4f}}} / ζ({s:.4f})")
+            print(f"  Mandelbrot: a={q_zipf_params['a_mandelbrot']:.4f}, "
+                  f"b={q_zipf_params['b_mandelbrot']:.2f}, "
+                  f"R²={q_zipf_params['r2_mandelbrot']:.6f}")
+    except Exception as e:
+        print(f"  Zipf analysis skipped: {e}")
+        q_zipf_df = pl.DataFrame()
+        q_zipf_params = {}
+    print()
+
+    # Step 2: Analyze obstructed primes
+    print("[2/7] Analyzing obstructed primes...")
     analysis = analyze_obstructed_primes(limit=limit, verbose=verbose)
     print(f"  {analysis.height} remainder rows from "
           f"{analysis['p'].n_unique()} obstructed primes\n")
@@ -672,8 +961,8 @@ def run_ladic_analysis(limit: Optional[int] = None,
         print("No obstructed primes found in block data.")
         return
 
-    # Step 2: Near-miss analysis
-    print("[2/5] Finding nearest misses...")
+    # Step 3: Near-miss analysis
+    print("[3/7] Finding nearest misses...")
     misses = find_nearest_misses(analysis)
     top = misses.head(10)
     print("  Top 10 nearest misses (highest dominant_share):")
@@ -682,14 +971,14 @@ def run_ladic_analysis(limit: Optional[int] = None,
               f"share={row['dominant_share']:.4f}")
     print()
 
-    # Step 3: ℓ-adic filtration
-    print(f"[3/5] Computing ℓ-adic filtration for ℓ ∈ {filtration_primes}...")
+    # Step 4: ℓ-adic filtration
+    print(f"[4/7] Computing ℓ-adic filtration for ℓ ∈ {filtration_primes}...")
     analysis = compute_ladic_filtration(analysis, filtration_primes)
     filt_summary = filtration_summary(analysis, filtration_primes)
     print(f"  {filt_summary.height} distinct valuation patterns\n")
 
-    # Step 4: Probabilistic number theory
-    print("[4/5] Erdős–Kac comparison...")
+    # Step 5: Probabilistic number theory
+    print("[5/7] Erdős–Kac comparison...")
     try:
         ek = erdos_kac_analysis(analysis)
         print(f"  Empirical: mean={ek.get('empirical_mean')}, "
@@ -702,8 +991,8 @@ def run_ladic_analysis(limit: Optional[int] = None,
         ek = {}
     print()
 
-    # Step 5: Density by almost-primality
-    print("[5/5] Almost-primality density...")
+    # Step 6: Density by almost-primality
+    print("[6/7] Almost-primality density...")
     density = density_by_almost_primality(analysis)
     if density.height > 0:
         for row in density.iter_rows(named=True):
@@ -715,10 +1004,34 @@ def run_ladic_analysis(limit: Optional[int] = None,
             print(f"    {label:20s}: {emp:.4f} (HR pred: {hr:.4f}, ratio: {ratio})")
     print()
 
+    # Step 7: Zipf on factor frequencies in composite remainders
+    print("[7/7] Zipf analysis on prime factor frequencies in remainders...")
+    try:
+        fac_zipf_df, fac_zipf_params = zipf_analysis_factors(analysis, verbose=verbose)
+        if fac_zipf_params:
+            print(f"  Factor Zipf exponent s = {fac_zipf_params['s_zipf']:.4f}, "
+                  f"R² = {fac_zipf_params['r2']:.6f}")
+            if q_zipf_params:
+                delta = abs(q_zipf_params['s_zipf'] - fac_zipf_params['s_zipf'])
+                print(f"  Exponent delta (q_k vs factors): {delta:.4f}")
+                if delta < 0.1:
+                    print("  -> Exponents match: additive structure preserves Zipf law")
+                else:
+                    print("  -> Exponents differ: p - 2^m distorts multiplicative structure")
+    except Exception as e:
+        print(f"  Factor Zipf skipped: {e}")
+        fac_zipf_df = pl.DataFrame()
+        fac_zipf_params = {}
+    print()
+
     # Save
     out = save_analysis(analysis)
     save_analysis(misses, "nearest_misses")
     save_analysis(filt_summary, "filtration_summary")
     save_analysis(density, "density_almost_prime")
+    if q_zipf_df.height > 0:
+        save_analysis(q_zipf_df, "zipf_q_frequencies")
+    if fac_zipf_df.height > 0:
+        save_analysis(fac_zipf_df, "zipf_factor_frequencies")
     print(f"\nAll results saved under {get_data_dir()}/")
     return analysis

@@ -384,6 +384,191 @@ tr:nth-child(even) {{ background-color: #f9f9f9; }}
 
 
 # ---------------------------------------------------------------------------
+# ℓ-adic / Zipf analysis pages (from saved parquet outputs)
+# ---------------------------------------------------------------------------
+
+def _try_load_analysis(name: str) -> pl.DataFrame | None:
+    """Try to load a saved ladic analysis parquet. Returns None if missing."""
+    from .utils import get_data_dir
+    path = get_data_dir() / f"{name}.parquet"
+    if path.exists():
+        return pl.read_parquet(path)
+    return None
+
+
+def generate_zipf_page() -> alt.TopLevelMixin | None:
+    """Generate Zipf / zeta analysis page from saved analysis data."""
+    q_zipf = _try_load_analysis("zipf_q_frequencies")
+    fac_zipf = _try_load_analysis("zipf_factor_frequencies")
+
+    if q_zipf is None and fac_zipf is None:
+        return None
+
+    charts = []
+
+    if q_zipf is not None and q_zipf.height > 0:
+        # Log-log scatter: rank vs count with Zipf fit overlay
+        q_base = (
+            alt.Chart(q_zipf.head(200))
+            .mark_circle(size=40, opacity=0.7, color='steelblue')
+            .encode(
+                x=alt.X('log_rank:Q', title='log(rank)'),
+                y=alt.Y('log_count:Q', title='log(frequency)'),
+                tooltip=['rank:Q', 'q:Q', 'count:Q'],
+            )
+        )
+        q_fit = (
+            alt.Chart(q_zipf.head(200))
+            .mark_line(color='red', strokeDash=[4, 2])
+            .encode(
+                x=alt.X('log_rank:Q'),
+                y=alt.Y('zipf_pred:Q').scale(type='log'),
+            )
+        )
+        # Can't easily overlay log(pred) so just show the scatter
+        q_chart = q_base.properties(
+            title='Zipf Analysis: q_k frequency vs rank (log-log)',
+            width=500, height=350,
+        )
+
+        # Top q values bar chart
+        q_top = q_zipf.head(30)
+        q_bar = (
+            alt.Chart(q_top).mark_bar(color='steelblue')
+            .encode(
+                x=alt.X('q:O', title='Prime base q (top 30)', sort='-y'),
+                y=alt.Y('count:Q', title='Frequency'),
+                tooltip=['q:O', 'count:Q', 'rank:Q'],
+            )
+            .properties(title='Top 30 q values by frequency', width=500, height=250)
+        )
+
+        charts.extend([q_chart, q_bar])
+
+    if fac_zipf is not None and fac_zipf.height > 0:
+        fac_scatter = (
+            alt.Chart(fac_zipf.head(200))
+            .mark_circle(size=40, opacity=0.7, color='orange')
+            .encode(
+                x=alt.X('log_rank:Q', title='log(rank)'),
+                y=alt.Y('log_freq:Q', title='log(frequency)'),
+                tooltip=['rank:Q', 'prime:Q', 'frequency:Q'],
+            )
+            .properties(
+                title='Zipf Analysis: factor frequencies in composite remainders (log-log)',
+                width=500, height=350,
+            )
+        )
+        charts.append(fac_scatter)
+
+    if not charts:
+        return None
+    return alt.vconcat(*charts).properties(title='Zipf / Zeta Distribution Analysis')
+
+
+def generate_ladic_page() -> alt.TopLevelMixin | None:
+    """Generate ℓ-adic analysis page from saved analysis data."""
+    analysis = _try_load_analysis("ladic_analysis")
+    misses = _try_load_analysis("nearest_misses")
+    density = _try_load_analysis("density_almost_prime")
+
+    if analysis is None:
+        return None
+
+    charts = []
+
+    # Near-miss dominant_share distribution
+    if 'dominant_share' in analysis.columns:
+        share_hist = (
+            analysis.filter(pl.col('r') > 1)
+            .with_columns(
+                (pl.col('dominant_share') * 20).round(0).cast(pl.Int32)
+                .clip(0, 20).alias('bin')
+            )
+            .group_by('bin')
+            .agg(pl.len().alias('count'))
+            .sort('bin')
+            .with_columns((pl.col('bin') / 20.0).alias('share_lower'))
+        )
+        share_chart = (
+            alt.Chart(share_hist).mark_bar(color='teal')
+            .encode(
+                x=alt.X('share_lower:Q', title='Dominant share (0=spread, 1=prime power)'),
+                y=alt.Y('count:Q', title='Count'),
+                tooltip=['share_lower:Q', 'count:Q'],
+            )
+            .properties(title='Near-miss: dominant share distribution', width=500, height=250)
+        )
+        charts.append(share_chart)
+
+    # Omega distribution
+    if 'omega' in analysis.columns:
+        omega_freq = (
+            analysis.filter(pl.col('r') > 1)
+            .group_by('omega')
+            .agg(pl.len().alias('count'))
+            .sort('omega')
+        )
+        omega_chart = (
+            alt.Chart(omega_freq).mark_bar(color='coral')
+            .encode(
+                x=alt.X('omega:O', title='omega(r) = distinct prime factors'),
+                y=alt.Y('count:Q', title='Count'),
+                tooltip=['omega:O', 'count:Q'],
+            )
+            .properties(title='Distribution of omega(r) for obstructed remainders', width=400, height=250)
+        )
+        charts.append(omega_chart)
+
+    # Almost-primality density vs Hardy–Ramanujan
+    if density is not None and density.height > 0 and 'empirical_fraction' in density.columns:
+        density_emp = (
+            alt.Chart(density).mark_bar(color='steelblue', opacity=0.7)
+            .encode(
+                x=alt.X('k:O', title='k (number of distinct prime factors)'),
+                y=alt.Y('empirical_fraction:Q', title='Fraction'),
+                tooltip=['k:O', 'empirical_fraction:Q', 'hardy_ramanujan_pred:Q'],
+            )
+        )
+        density_pred = (
+            alt.Chart(density).mark_point(color='red', size=80, shape='diamond')
+            .encode(
+                x=alt.X('k:O'),
+                y=alt.Y('hardy_ramanujan_pred:Q'),
+                tooltip=['k:O', 'hardy_ramanujan_pred:Q'],
+            )
+        )
+        density_chart = (
+            (density_emp + density_pred)
+            .properties(
+                title='Almost-primality: empirical (bars) vs Hardy-Ramanujan (diamonds)',
+                width=400, height=250,
+            )
+        )
+        charts.append(density_chart)
+
+    # Top nearest misses table as bar chart
+    if misses is not None and misses.height > 0:
+        top_misses = misses.head(20).with_columns(
+            pl.col('p').cast(pl.Utf8).alias('p_str')
+        )
+        miss_chart = (
+            alt.Chart(top_misses).mark_bar(color='darkgreen')
+            .encode(
+                x=alt.X('p_str:N', title='Obstructed prime p', sort='-y'),
+                y=alt.Y('dominant_share:Q', title='Best dominant share'),
+                tooltip=['p:Q', 'r:Q', 'dominant_share:Q', 'factorization:N'],
+            )
+            .properties(title='Top 20 nearest misses (closest to prime power)', width=500, height=250)
+        )
+        charts.append(miss_chart)
+
+    if not charts:
+        return None
+    return alt.vconcat(*charts).properties(title='l-adic Diophantine Analysis')
+
+
+# ---------------------------------------------------------------------------
 # Page generators
 # ---------------------------------------------------------------------------
 
@@ -417,6 +602,9 @@ def generate_dashboard(data_path=None, output_path=None):
 
     All data aggregation happens in Polars; only small summary frames
     are serialized into the Altair/Vega-Lite JSON specs.
+
+    If ℓ-adic analysis parquet files exist (from `funbuns --ladic`),
+    generates additional Zipf and ℓ-adic analysis pages.
     """
     lf = load_data_for_viz(data_path)
     stats = _collect_stats(lf)
@@ -430,6 +618,34 @@ def generate_dashboard(data_path=None, output_path=None):
 
     with open(data_dir / 'raw_data.html', 'w') as f:
         f.write(create_raw_data_table(lf))
+
+    # Generate analysis pages if data exists
+    analysis_pages = []
+
+    zipf_page = generate_zipf_page()
+    if zipf_page is not None:
+        zipf_page.save(str(data_dir / 'zipf.html'))
+        analysis_pages.append(('zipf.html', '[ZIPF] Zeta Distribution',
+                               'Zipf/zeta analysis of q frequencies and factor distributions'))
+        print(f"  [ZIPF] {data_dir / 'zipf.html'}")
+
+    ladic_page = generate_ladic_page()
+    if ladic_page is not None:
+        ladic_page.save(str(data_dir / 'ladic.html'))
+        analysis_pages.append(('ladic.html', '[ANALYSIS] l-adic',
+                               'Near-miss metrics, omega distribution, Erdos-Kac comparison'))
+        print(f"  [ANALYSIS] {data_dir / 'ladic.html'}")
+
+    # Build analysis nav items
+    analysis_nav = ""
+    for href, title, desc in analysis_pages:
+        analysis_nav += f"""<div class="nav-item" style="background: #d4edda;">
+<a href="{href}">{title}</a><p>{desc}</p></div>\n"""
+
+    analysis_note = ""
+    if not analysis_pages:
+        analysis_note = """<p style="text-align: center; color: #999; margin-top: 10px;">
+<em>Run <code>funbuns --ladic</code> to generate Zipf and l-adic analysis pages</em></p>"""
 
     index_html = f"""<html>
 <head><title>Prime Power Partition Analysis</title>
@@ -463,7 +679,9 @@ h1 {{ color: #333; text-align: center; }}
 <p>Clean charts of m, n, and q value frequencies</p></div>
 <div class="nav-item"><a href="raw_data.html">[DATA] Raw Table</a>
 <p>Scrollable table with all partition data</p></div>
+{analysis_nav}
 </div>
+{analysis_note}
 <p style="text-align: center; color: #666; margin-top: 30px;">
 <em>Charts use server-side aggregation for fast rendering at any dataset size</em></p>
 </div></body></html>"""
