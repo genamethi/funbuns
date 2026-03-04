@@ -10,6 +10,8 @@ serve = "python -m http.server 8000 -d data"
 bmgr = "python -m funbuns.block_manager"
 bmgr-integrate = "python -m funbuns.block_manager --integrate-check"
 bmgr-integrity = "python -m funbuns.block_manager --integrity"
+ladic = "funbuns --ladic"
+build-native = "cd funbuns_native && maturin develop --release"
 
 [dependencies]
 sagelib = "==10.6"

@@ -13,11 +13,7 @@ import polars as pl
 #TODO: Rename this from funbuns lol
 #TODO: Reduce stdout noise during lvl 0, implement different verbosity levels.
 #TODO: Fix semaphore leak issue: Probably memory management issues during file saving.
-#TODO: Develop Rust plugin for fast table method for small prime/prime power checks
-#TODO: Consider implementing some the modules from pppart+adics and some tda/ph
 #TODO: Fix issues with large data and Altair plots.
-##     This one is requires learning a bit more about Altair,
-##     and I'll probably need to develop a better webserver solution.
 #TODO: Review "temp-scripts folder" and see if I can streamline the data management modules.
 
 
@@ -49,11 +45,17 @@ def main():
     parser.add_argument('-d', '-vv', '--debug', action='store_true',
                         help='More verbose with profiling of memory usage and timing data.')
 
-    #TODO: Re-implement this with Rust based Polars plugin, maybe using Malacite or FFI interface with Cython.
-    #TODO: This doesn't need to be here.
     parser.add_argument('-g', '--genpp', type=int, metavar='N',
                        help='Prepare prime powers data for first N primes (p^1 through p^100)')
-    
+
+    # ℓ-adic analysis
+    parser.add_argument('--ladic', action='store_true',
+                       help='Run ℓ-adic Diophantine analysis on obstructed primes')
+    parser.add_argument('--ladic-limit', type=int, default=None, metavar='N',
+                       help='Limit ℓ-adic analysis to first N obstructed primes')
+    parser.add_argument('--ladic-gap', type=int, default=None, metavar='P',
+                       help='Deep gap-filling analysis for a single obstructed prime P')
+
     args = parser.parse_args()
     
     # Handle view mode
@@ -71,9 +73,24 @@ def main():
         from .utils import show_run_files_summary
         show_run_files_summary()
         return
-    
 
-    
+    # Handle ℓ-adic analysis modes
+    if args.ladic:
+        from .ladic import run_ladic_analysis
+        run_ladic_analysis(limit=args.ladic_limit, verbose=args.verbose)
+        return
+
+    if args.ladic_gap is not None:
+        from .ladic import gap_filling_analysis
+        df = gap_filling_analysis(args.ladic_gap)
+        print(f"\nGap-filling analysis for p = {args.ladic_gap}")
+        print(f"{'m':>4}  {'r':>14}  {'ω':>3}  {'Ω':>3}  {'share':>7}  factorization")
+        print("-" * 70)
+        for row in df.iter_rows(named=True):
+            print(f"{row['m']:>4}  {row['r']:>14}  {row['omega']:>3}  "
+                  f"{row['big_omega']:>3}  {row['dominant_share']:>7.4f}  {row['factorization']}")
+        return
+
     # Ensure -n is provided when not in view/prep/show-runs mode
     if args.num_primes is None:
         parser.error("-n/--number is required when not using --view or --prep modes")

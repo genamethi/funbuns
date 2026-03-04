@@ -17,6 +17,7 @@ setup(
         "polars",
         "tqdm",
         "psutil",
+        "scipy",
     ],
     entry_points={
         "console_scripts": [
