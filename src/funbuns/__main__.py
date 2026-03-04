@@ -56,6 +56,12 @@ def main():
     parser.add_argument('--ladic-gap', type=int, default=None, metavar='P',
                        help='Deep gap-filling analysis for a single obstructed prime P')
 
+    # Spectral analysis
+    parser.add_argument('--spectral', action='store_true',
+                       help='Run spectral/harmonic analysis on obstruction indicator')
+    parser.add_argument('--clocks', type=int, default=None, metavar='N',
+                       help='Run prime clock superposition analysis with first N primes')
+
     args = parser.parse_args()
     
     # Handle view mode
@@ -89,6 +95,24 @@ def main():
         for row in df.iter_rows(named=True):
             print(f"{row['m']:>4}  {row['r']:>14}  {row['omega']:>3}  "
                   f"{row['big_omega']:>3}  {row['dominant_share']:>7.4f}  {row['factorization']}")
+        return
+
+    # Handle spectral analysis
+    if args.spectral:
+        from .ladic import (obstruction_indicator, spectral_analysis_obstruction,
+                            save_analysis)
+        print("=== Spectral Analysis of Obstruction Indicator ===\n")
+        indicator = obstruction_indicator(verbose=True)
+        spectrum = spectral_analysis_obstruction(indicator, verbose=True)
+        save_analysis(indicator, "obstruction_indicator")
+        save_analysis(spectrum, "obstruction_spectrum")
+        return
+
+    if args.clocks is not None:
+        from .ladic import clock_analysis, save_analysis
+        print(f"=== Prime Clock Superposition (N={args.clocks}) ===\n")
+        clocks = clock_analysis(limit=args.clocks, verbose=True)
+        save_analysis(clocks, "clock_superposition")
         return
 
     # Ensure -n is provided when not in view/prep/show-runs mode

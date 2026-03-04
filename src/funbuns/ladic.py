@@ -893,6 +893,209 @@ def zipf_analysis_factors(analysis_df: pl.DataFrame,
 
 
 # ---------------------------------------------------------------------------
+# Spectral / harmonic analysis ("wall of clocks")
+# ---------------------------------------------------------------------------
+
+def prime_clock_phases(p: int, max_m: Optional[int] = None) -> np.ndarray:
+    """Compute the phase of 2^m mod p for m = 1, ..., max_m.
+
+    This is the "clock hand position" for prime p at each power of 2.
+    The phase is 2^m / p (fractional part), so it lives in [0, 1).
+    When the phase lands near a value where p - 2^m is a prime power,
+    the clock has "struck" a resonance.
+    """
+    if max_m is None:
+        max_m = int(floor(log(p) / log(2)))
+    phases = np.zeros(max_m)
+    tw = 1
+    for m in range(1, max_m + 1):
+        tw = (tw * 2) % p
+        phases[m - 1] = tw / p
+    return phases
+
+
+def obstruction_indicator(verbose: bool = False) -> pl.DataFrame:
+    """Build the obstruction indicator function χ(p).
+
+    χ(p) = 1 if p is obstructed (no prime power decomposition), 0 otherwise.
+    Returns DataFrame with columns: p, chi, log_p.
+    """
+    data_dir = get_data_dir()
+    block_pattern = str(data_dir / "blocks" / "pp_b*.parquet")
+
+    indicator = (
+        pl.scan_parquet(block_pattern)
+        .group_by('p')
+        .agg(
+            (pl.col('m_k') == 0).all().cast(pl.UInt8).alias('chi')
+        )
+        .sort('p')
+        .collect(streaming=True)
+        .with_columns(
+            pl.col('p').cast(pl.Float64).log().alias('log_p')
+        )
+    )
+
+    if verbose:
+        total = indicator.height
+        obstructed = indicator.filter(pl.col('chi') == 1).height
+        print(f"  Obstruction indicator: {obstructed}/{total} primes obstructed "
+              f"({100 * obstructed / total:.2f}%)")
+
+    return indicator
+
+
+def spectral_analysis_obstruction(indicator_df: pl.DataFrame,
+                                  n_frequencies: int = 200,
+                                  verbose: bool = False) -> pl.DataFrame:
+    """Fourier analysis of the obstruction indicator function.
+
+    Computes the discrete Fourier transform of χ(p) evaluated at
+    log(p) (the natural scale for prime distribution). Peaks in the
+    power spectrum at frequency γ correspond to oscillatory terms
+    in the explicit formula — i.e., nontrivial zeros ρ = 1/2 + iγ
+    of the Riemann zeta function.
+
+    If obstructed primes correlate with specific zeros, those
+    frequencies will have anomalous power.
+
+    Returns DataFrame: frequency, power, phase.
+    """
+    chi = indicator_df['chi'].to_numpy().astype(float)
+    log_p = indicator_df['log_p'].to_numpy()
+
+    # Subtract mean to get oscillatory part
+    chi_centered = chi - chi.mean()
+    N = len(chi)
+
+    # Test frequencies spanning the range where low-lying zeta zeros live
+    # The first few imaginary parts of nontrivial zeros:
+    # γ₁ ≈ 14.135, γ₂ ≈ 21.022, γ₃ ≈ 25.011, γ₄ ≈ 30.425, γ₅ ≈ 32.935
+    max_freq = 60.0
+    freqs = np.linspace(0.5, max_freq, n_frequencies)
+
+    powers = np.zeros(n_frequencies)
+    phases = np.zeros(n_frequencies)
+
+    # Compute the "Fourier coefficient" at each frequency γ:
+    #   F(γ) = Σ_p χ(p) · exp(-i γ log p) / √N
+    # This directly probes the explicit formula oscillations.
+    for i, gamma in enumerate(freqs):
+        # Complex exponential evaluated at log(p) with frequency gamma
+        exp_vals = np.exp(-1j * gamma * log_p)
+        coeff = np.sum(chi_centered * exp_vals) / sqrt(N)
+        powers[i] = float(np.abs(coeff) ** 2)
+        phases[i] = float(np.angle(coeff))
+
+    result = pl.DataFrame({
+        'frequency': freqs.tolist(),
+        'power': powers.tolist(),
+        'phase': phases.tolist(),
+    })
+
+    if verbose:
+        # Find peaks
+        sorted_by_power = result.sort('power', descending=True).head(10)
+        print(f"  Top 10 spectral peaks in obstruction indicator:")
+        print(f"  {'freq':>8s}  {'power':>10s}  note")
+        known_zeros = {14.135: 'γ₁', 21.022: 'γ₂', 25.011: 'γ₃',
+                       30.425: 'γ₄', 32.935: 'γ₅', 37.586: 'γ₆',
+                       40.919: 'γ₇', 43.327: 'γ₈', 48.005: 'γ₉', 49.774: 'γ₁₀'}
+        for row in sorted_by_power.iter_rows(named=True):
+            f = row['frequency']
+            p = row['power']
+            # Check proximity to known zeros
+            note = ''
+            for gamma, label in known_zeros.items():
+                if abs(f - gamma) < 0.5:
+                    note = f'  <- near {label} = {gamma}'
+                    break
+            print(f"  {f:8.3f}  {p:10.4f}{note}")
+
+    return result
+
+
+def clock_superposition(primes: list[int], t_range: np.ndarray) -> np.ndarray:
+    """Compute the superposition of prime clocks at continuous "time" t.
+
+    S(t) = Σ_p exp(2πi t / p)
+
+    This is the sum of unit-frequency oscillators, one per prime,
+    with period p. The modulus |S(t)| measures constructive interference.
+    When |S(t)| is large, the clock hands are aligned. When |S(t)| is small,
+    they're spread out (destructive interference).
+
+    The connection to ζ: consider S(t) evaluated at t such that t/p ≈ k
+    for many primes simultaneously — this is related to the von Mangoldt
+    explicit formula's oscillatory terms.
+
+    Args:
+        primes: List of primes to superpose.
+        t_range: Array of t values to evaluate.
+
+    Returns:
+        Array of |S(t)|² values (power of the superposition).
+    """
+    result = np.zeros(len(t_range), dtype=complex)
+    for p in primes:
+        result += np.exp(2j * np.pi * t_range / p)
+    return np.abs(result) ** 2
+
+
+def clock_analysis(limit: int = 1000,
+                   n_points: int = 2000,
+                   verbose: bool = False) -> pl.DataFrame:
+    """Run the clock superposition analysis using primes from block data.
+
+    Evaluates S(t) over a range and identifies constructive interference
+    peaks. These peaks correspond to values of t where many prime
+    "clocks" align — the resonances of the prime distribution.
+
+    Returns DataFrame: t, power, log_power.
+    """
+    data_dir = get_data_dir()
+    block_pattern = str(data_dir / "blocks" / "pp_b*.parquet")
+
+    primes = (
+        pl.scan_parquet(block_pattern)
+        .select('p')
+        .unique()
+        .sort('p')
+        .head(limit)
+        .collect()['p']
+        .to_list()
+    )
+
+    if verbose:
+        print(f"  Superposing {len(primes)} prime clocks (p from {primes[0]} to {primes[-1]})")
+
+    # Evaluate over a range where interesting structure appears
+    # Use log-spaced points to capture both fine and coarse structure
+    max_p = primes[-1]
+    t_range = np.linspace(1, max_p * 2, n_points)
+
+    power = clock_superposition(primes, t_range)
+
+    result = pl.DataFrame({
+        't': t_range.tolist(),
+        'power': power.tolist(),
+        'log_power': np.log(np.maximum(power, 1e-10)).tolist(),
+        'normalized_power': (power / len(primes)).tolist(),
+    })
+
+    if verbose:
+        top = result.sort('power', descending=True).head(5)
+        baseline = len(primes)  # expected power for random phases
+        print(f"  Baseline (random phases): {baseline:.1f}")
+        print(f"  Top 5 constructive interference peaks:")
+        for row in top.iter_rows(named=True):
+            ratio = row['power'] / baseline
+            print(f"    t={row['t']:.1f}, power={row['power']:.1f} ({ratio:.1f}x baseline)")
+
+    return result
+
+
+# ---------------------------------------------------------------------------
 # Persistence / I/O
 # ---------------------------------------------------------------------------
 

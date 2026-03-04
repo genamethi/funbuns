@@ -568,6 +568,77 @@ def generate_ladic_page() -> alt.TopLevelMixin | None:
     return alt.vconcat(*charts).properties(title='l-adic Diophantine Analysis')
 
 
+def generate_spectral_page() -> alt.TopLevelMixin | None:
+    """Generate spectral analysis page from saved data."""
+    spectrum = _try_load_analysis("obstruction_spectrum")
+    clocks = _try_load_analysis("clock_superposition")
+
+    if spectrum is None and clocks is None:
+        return None
+
+    charts = []
+
+    if spectrum is not None and spectrum.height > 0:
+        # Known zeta zeros for annotation
+        zeta_zeros = [14.135, 21.022, 25.011, 30.425, 32.935, 37.586, 40.919, 43.327, 48.005, 49.774]
+        zero_df = pl.DataFrame({
+            'frequency': zeta_zeros,
+            'label': [f'gamma_{i+1}' for i in range(len(zeta_zeros))],
+        })
+
+        # Power spectrum
+        spectrum_chart = (
+            alt.Chart(spectrum).mark_line(color='steelblue', strokeWidth=1.5)
+            .encode(
+                x=alt.X('frequency:Q', title='Frequency gamma'),
+                y=alt.Y('power:Q', title='Spectral power'),
+                tooltip=['frequency:Q', 'power:Q'],
+            )
+        )
+        # Overlay zeta zero positions as vertical rules
+        zero_rules = (
+            alt.Chart(zero_df).mark_rule(color='red', strokeDash=[4, 2], opacity=0.6)
+            .encode(x=alt.X('frequency:Q'))
+        )
+        zero_labels = (
+            alt.Chart(zero_df).mark_text(dy=-10, color='red', fontSize=9)
+            .encode(x=alt.X('frequency:Q'), text='label:N')
+        )
+
+        spectral_combined = (
+            (spectrum_chart + zero_rules + zero_labels)
+            .properties(
+                title='Obstruction indicator power spectrum (red = known zeta zeros)',
+                width=700, height=300,
+            )
+        )
+        charts.append(spectral_combined)
+
+    if clocks is not None and clocks.height > 0:
+        # Sample down for performance
+        clock_data = clocks if clocks.height <= 2000 else clocks.gather_every(max(1, clocks.height // 2000))
+
+        clock_chart = (
+            alt.Chart(clock_data).mark_line(color='purple', strokeWidth=0.8)
+            .encode(
+                x=alt.X('t:Q', title='t (superposition parameter)'),
+                y=alt.Y('normalized_power:Q', title='|S(t)|^2 / N (normalized)'),
+                tooltip=['t:Q', 'normalized_power:Q'],
+            )
+            .properties(
+                title='Prime clock superposition: constructive interference peaks',
+                width=700, height=300,
+            )
+        )
+        charts.append(clock_chart)
+
+    if not charts:
+        return None
+    return alt.vconcat(*charts).properties(
+        title='Spectral / Harmonic Analysis ("Wall of Clocks")'
+    )
+
+
 # ---------------------------------------------------------------------------
 # Page generators
 # ---------------------------------------------------------------------------
@@ -635,6 +706,13 @@ def generate_dashboard(data_path=None, output_path=None):
         analysis_pages.append(('ladic.html', '[ANALYSIS] l-adic',
                                'Near-miss metrics, omega distribution, Erdos-Kac comparison'))
         print(f"  [ANALYSIS] {data_dir / 'ladic.html'}")
+
+    spectral_page = generate_spectral_page()
+    if spectral_page is not None:
+        spectral_page.save(str(data_dir / 'spectral.html'))
+        analysis_pages.append(('spectral.html', '[SPECTRAL] Harmonic Analysis',
+                               'Obstruction power spectrum, prime clock superposition'))
+        print(f"  [SPECTRAL] {data_dir / 'spectral.html'}")
 
     # Build analysis nav items
     analysis_nav = ""
