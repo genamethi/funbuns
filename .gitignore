@@ -3,3 +3,4 @@
 data/*
 error.log
 __pycache__
+*.parquet

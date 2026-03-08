@@ -67,13 +67,16 @@ def integrate_runs_into_blocks(target_prime_count: int = 500_000,
 
     # Check if there's a partial last block to absorb
     last_block_df = None
+    last_block_primes = 0
     if existing_blocks:
         last_block_path = existing_blocks[-1]
         last_block_meta = pl.scan_parquet(last_block_path).select(
             pl.col("p").n_unique().alias("uniq")
         ).collect()
-        if last_block_meta["uniq"].item() < target_prime_count:
+        last_block_uniq = last_block_meta["uniq"].item()
+        if last_block_uniq < target_prime_count:
             last_block_df = pl.read_parquet(last_block_path)
+            last_block_primes = last_block_uniq
             starting_block_idx -= 1
             last_block_path.unlink()
 
@@ -132,38 +135,40 @@ def integrate_runs_into_blocks(target_prime_count: int = 500_000,
         if before > after and verbose:
             print(f"  Batch {batch_idx + 1}: removed {before - after:,} duplicate rows")
 
-        # Build block plan for this batch
+        # Assign block IDs via a prime-rank mapping, then partition
         unique_primes = data_to_block.select("p").unique().sort("p")
         n_primes = unique_primes.height
         total_integrated += n_primes
 
-        block_plan_df = (
+        # Build prime → block_id mapping
+        prime_block_map = (
             unique_primes.with_row_index("index")
             .with_columns(
                 block_id=(pl.col("index") // target_prime_count) + starting_block_idx
             )
-            .group_by("block_id")
-            .agg(
-                pl.col("p").min().alias("min_p"),
-                pl.col("p").max().alias("max_p")
-            )
-            .sort("block_id")
+            .select("p", "block_id")
         )
 
-        # Write blocks for this batch
-        for plan in block_plan_df.iter_rows(named=True):
-            block_id = plan["block_id"]
-            min_p, max_p = plan["min_p"], plan["max_p"]
+        # Join block_id onto data and partition — single pass, no repeated filters
+        tagged = data_to_block.join(prime_block_map, on="p", how="left")
+        partitions = tagged.partition_by("block_id", as_dict=True)
 
-            block_rows = data_to_block.filter(pl.col("p").is_between(min_p, max_p))
+        for block_id_val, block_df in sorted(partitions.items()):
+            block_id = block_df["block_id"][0]
+            max_p = block_df["p"].max()
             out_path = bdir / f"pp_b{block_id + 1:03d}_p{max_p}.parquet"
-            block_rows.write_parquet(out_path)
+            block_df.drop("block_id").write_parquet(
+                out_path, compression="zstd", compression_level=1,
+                row_group_size=min(block_df.height, 100_000)
+            )
 
         # Advance the block index for the next batch
-        if block_plan_df.height > 0:
-            starting_block_idx = block_plan_df["block_id"].max() + 1
+        if partitions:
+            starting_block_idx = max(
+                part["block_id"][0] for part in partitions.values()
+            ) + 1
 
-        del data_to_block, unique_primes, block_plan_df
+        del data_to_block, unique_primes, prime_block_map, tagged, partitions
 
         if verbose and total_files > batch_size:
             files_done = min((batch_idx + 1) * batch_size, total_files)
@@ -178,5 +183,11 @@ def integrate_runs_into_blocks(target_prime_count: int = 500_000,
                 pass
 
     if verbose:
-        print(f"Integrated {total_integrated:,} unique prime entries into blocks.")
+        new_primes = total_integrated - last_block_primes
+        if last_block_primes > 0:
+            print(f"Integrated {new_primes:,} new primes into blocks "
+                  f"({last_block_primes:,} re-packed from partial last block, "
+                  f"{total_integrated:,} total in affected blocks).")
+        else:
+            print(f"Integrated {new_primes:,} new primes into blocks.")
     return True

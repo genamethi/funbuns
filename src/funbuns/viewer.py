@@ -407,6 +407,9 @@ def generate_zipf_page() -> alt.TopLevelMixin | None:
     charts = []
 
     if q_zipf is not None and q_zipf.height > 0:
+        # Column is 'q_k' in the data
+        q_col = 'q_k' if 'q_k' in q_zipf.columns else 'q'
+
         # Log-log scatter: rank vs count with Zipf fit overlay
         q_base = (
             alt.Chart(q_zipf.head(200))
@@ -414,18 +417,9 @@ def generate_zipf_page() -> alt.TopLevelMixin | None:
             .encode(
                 x=alt.X('log_rank:Q', title='log(rank)'),
                 y=alt.Y('log_count:Q', title='log(frequency)'),
-                tooltip=['rank:Q', 'q:Q', 'count:Q'],
+                tooltip=['rank:Q', f'{q_col}:Q', 'count:Q'],
             )
         )
-        q_fit = (
-            alt.Chart(q_zipf.head(200))
-            .mark_line(color='red', strokeDash=[4, 2])
-            .encode(
-                x=alt.X('log_rank:Q'),
-                y=alt.Y('zipf_pred:Q').scale(type='log'),
-            )
-        )
-        # Can't easily overlay log(pred) so just show the scatter
         q_chart = q_base.properties(
             title='Zipf Analysis: q_k frequency vs rank (log-log)',
             width=500, height=350,
@@ -436,9 +430,9 @@ def generate_zipf_page() -> alt.TopLevelMixin | None:
         q_bar = (
             alt.Chart(q_top).mark_bar(color='steelblue')
             .encode(
-                x=alt.X('q:O', title='Prime base q (top 30)', sort='-y'),
+                x=alt.X(f'{q_col}:O', title='Prime base q (top 30)', sort='-y'),
                 y=alt.Y('count:Q', title='Frequency'),
-                tooltip=['q:O', 'count:Q', 'rank:Q'],
+                tooltip=[f'{q_col}:O', 'count:Q', 'rank:Q'],
             )
             .properties(title='Top 30 q values by frequency', width=500, height=250)
         )
@@ -467,20 +461,28 @@ def generate_zipf_page() -> alt.TopLevelMixin | None:
 
 
 def generate_ladic_page() -> alt.TopLevelMixin | None:
-    """Generate ℓ-adic analysis page from saved analysis data."""
+    """Generate ℓ-adic analysis page from saved analysis data.
+
+    Works with both old (ladic_analysis.parquet) and new (nearest_misses.parquet
+    + density_almost_prime.parquet) output formats.
+    """
+    # Try new format first, fall back to old
     analysis = _try_load_analysis("ladic_analysis")
     misses = _try_load_analysis("nearest_misses")
     density = _try_load_analysis("density_almost_prime")
 
-    if analysis is None:
+    # Use nearest_misses as the primary data source if no full analysis
+    primary = analysis if analysis is not None else misses
+    if primary is None:
         return None
 
     charts = []
 
     # Near-miss dominant_share distribution
-    if 'dominant_share' in analysis.columns:
+    if 'dominant_share' in primary.columns:
+        share_data = primary.filter(pl.col('r') > 1) if 'r' in primary.columns else primary
         share_hist = (
-            analysis.filter(pl.col('r') > 1)
+            share_data
             .with_columns(
                 (pl.col('dominant_share') * 20).round(0).cast(pl.Int32)
                 .clip(0, 20).alias('bin')
@@ -502,9 +504,10 @@ def generate_ladic_page() -> alt.TopLevelMixin | None:
         charts.append(share_chart)
 
     # Omega distribution
-    if 'omega' in analysis.columns:
+    if 'omega' in primary.columns:
+        omega_data = primary.filter(pl.col('r') > 1) if 'r' in primary.columns else primary
         omega_freq = (
-            analysis.filter(pl.col('r') > 1)
+            omega_data
             .group_by('omega')
             .agg(pl.len().alias('count'))
             .sort('omega')
@@ -520,44 +523,75 @@ def generate_ladic_page() -> alt.TopLevelMixin | None:
         )
         charts.append(omega_chart)
 
-    # Almost-primality density vs Hardy–Ramanujan
-    if density is not None and density.height > 0 and 'empirical_fraction' in density.columns:
-        density_emp = (
-            alt.Chart(density).mark_bar(color='steelblue', opacity=0.7)
-            .encode(
-                x=alt.X('k:O', title='k (number of distinct prime factors)'),
-                y=alt.Y('empirical_fraction:Q', title='Fraction'),
-                tooltip=['k:O', 'empirical_fraction:Q', 'hardy_ramanujan_pred:Q'],
+    # Almost-primality density vs Hardy-Ramanujan
+    if density is not None and density.height > 0:
+        if 'empirical_fraction' in density.columns:
+            # Old format with pre-computed fractions
+            density_emp = (
+                alt.Chart(density).mark_bar(color='steelblue', opacity=0.7)
+                .encode(
+                    x=alt.X('k:O', title='k (number of distinct prime factors)'),
+                    y=alt.Y('empirical_fraction:Q', title='Fraction'),
+                    tooltip=['k:O', 'empirical_fraction:Q', 'hardy_ramanujan_pred:Q'],
+                )
             )
-        )
-        density_pred = (
-            alt.Chart(density).mark_point(color='red', size=80, shape='diamond')
-            .encode(
-                x=alt.X('k:O'),
-                y=alt.Y('hardy_ramanujan_pred:Q'),
-                tooltip=['k:O', 'hardy_ramanujan_pred:Q'],
+            density_pred = (
+                alt.Chart(density).mark_point(color='red', size=80, shape='diamond')
+                .encode(
+                    x=alt.X('k:O'),
+                    y=alt.Y('hardy_ramanujan_pred:Q'),
+                    tooltip=['k:O', 'hardy_ramanujan_pred:Q'],
+                )
             )
-        )
-        density_chart = (
-            (density_emp + density_pred)
-            .properties(
-                title='Almost-primality: empirical (bars) vs Hardy-Ramanujan (diamonds)',
-                width=400, height=250,
+            density_chart = (
+                (density_emp + density_pred)
+                .properties(
+                    title='Almost-primality: empirical (bars) vs Hardy-Ramanujan (diamonds)',
+                    width=400, height=250,
+                )
             )
-        )
-        charts.append(density_chart)
+            charts.append(density_chart)
+        elif 'count' in density.columns:
+            # New format: {omega, count} or {k, count}
+            k_col = 'omega' if 'omega' in density.columns else 'k'
+            total = density.filter(pl.col(k_col) > 0)['count'].sum()
+            if total > 0:
+                density_viz = (
+                    density.filter(pl.col(k_col) > 0)
+                    .with_columns(
+                        (pl.col('count') / total).alias('fraction'),
+                        pl.col(k_col).alias('k'),
+                    )
+                )
+                density_chart = (
+                    alt.Chart(density_viz).mark_bar(color='steelblue', opacity=0.7)
+                    .encode(
+                        x=alt.X('k:O', title='k (number of distinct prime factors)'),
+                        y=alt.Y('fraction:Q', title='Fraction'),
+                        tooltip=['k:O', 'count:Q', 'fraction:Q'],
+                    )
+                    .properties(title='Almost-primality density', width=400, height=250)
+                )
+                charts.append(density_chart)
 
-    # Top nearest misses table as bar chart
-    if misses is not None and misses.height > 0:
-        top_misses = misses.head(20).with_columns(
-            pl.col('p').cast(pl.Utf8).alias('p_str')
+    # Top nearest misses bar chart
+    miss_source = misses if misses is not None else primary
+    if miss_source is not None and miss_source.height > 0 and 'dominant_share' in miss_source.columns:
+        top_misses = (
+            miss_source
+            .sort('dominant_share', descending=True)
+            .head(20)
+            .with_columns(pl.col('p').cast(pl.Utf8).alias('p_str'))
         )
+        tooltips = ['p:Q', 'r:Q', 'dominant_share:Q']
+        if 'factorization' in top_misses.columns:
+            tooltips.append('factorization:N')
         miss_chart = (
             alt.Chart(top_misses).mark_bar(color='darkgreen')
             .encode(
                 x=alt.X('p_str:N', title='Obstructed prime p', sort='-y'),
                 y=alt.Y('dominant_share:Q', title='Best dominant share'),
-                tooltip=['p:Q', 'r:Q', 'dominant_share:Q', 'factorization:N'],
+                tooltip=tooltips,
             )
             .properties(title='Top 20 nearest misses (closest to prime power)', width=500, height=250)
         )

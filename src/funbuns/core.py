@@ -161,7 +161,7 @@ class PPBatchFeeder:
 
         start_idx = prime_pi(init_p)
 
-        P = Primes(proof=False)
+        P = Primes()
         
         start_prime = next_prime(init_p)
         final_prime = P.unrank(start_idx + num_primes - 1)

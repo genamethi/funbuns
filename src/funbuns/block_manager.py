@@ -52,11 +52,16 @@ class BlockManager:
             
             for i, file in enumerate(sample_files):
                 try:
-                    df = pl.read_parquet(file)
-                    rows = len(df)
-                    min_p = df.select(pl.col("p").min()).item()
-                    max_p = df.select(pl.col("p").max()).item() 
-                    unique_primes = df.select(pl.col("p").n_unique()).item()
+                    stats = pl.scan_parquet(file).select([
+                        pl.len().alias("rows"),
+                        pl.col("p").min().alias("min_p"),
+                        pl.col("p").max().alias("max_p"),
+                        pl.col("p").n_unique().alias("unique_primes")
+                    ]).collect()
+                    rows = stats["rows"].item()
+                    min_p = stats["min_p"].item()
+                    max_p = stats["max_p"].item()
+                    unique_primes = stats["unique_primes"].item()
                     
                     print(f"    {file.name}: {rows:,} rows, {unique_primes:,} primes ({min_p:,} to {max_p:,})")
                     
@@ -99,128 +104,142 @@ class BlockManager:
         
         return analysis
     
-    def convert_runs_to_blocks(self, target_prime_count: int = 500_000, dry_run: bool = False):
-        """Convert run files to properly named block files."""
+    def convert_runs_to_blocks(self, target_prime_count: int = 500_000,
+                               dry_run: bool = False, memory_limit_mb: int = 512):
+        """Convert run files to properly named block files.
+
+        Processes run files in memory-bounded batches to avoid OOM on large
+        backlogs, mirroring the strategy used by run_ingester.
+        """
         print(f"🔄 Converting runs to blocks (target: {target_prime_count:,} primes per block)")
-        
+
         if dry_run:
             print("  🧪 DRY RUN - no files will be modified")
-        
-        run_files = list(self.runs_dir.glob("*.parquet"))
+
+        run_files = sorted(self.runs_dir.glob("*.parquet")) if self.runs_dir.exists() else []
         if not run_files:
             print("  ❌ No run files found to convert")
             return
-        
+
         print(f"  📁 Found {len(run_files)} run files to process")
-        
-        # Read all data and sort by prime
-        print("  📊 Loading and sorting all data...")
-        all_data = pl.scan_parquet(run_files).collect().sort("p")
-        total_rows = len(all_data)
-        total_primes = all_data.select(pl.col("p").n_unique()).item()
-        
-        print(f"  📈 Total: {total_rows:,} rows, {total_primes:,} unique primes")
-        
+
         # Check if we can append to the last existing block
         existing_blocks = sorted(self.blocks_dir.glob("pp_b*.parquet"))
-        last_block_path = None
-        last_block_primes = 0
-        
+        last_block_df = None
+        starting_block_idx = len(existing_blocks)
+
         if existing_blocks:
             last_block_path = existing_blocks[-1]
-            last_block_data = pl.read_parquet(last_block_path)
-            last_block_primes = last_block_data.select(pl.col("p").n_unique()).item()
+            last_block_primes = pl.scan_parquet(last_block_path).select(
+                pl.col("p").n_unique()
+            ).collect().item()
             print(f"  📦 Found existing last block: {last_block_path.name} ({last_block_primes:,} primes)")
-            
+
             if last_block_primes < target_prime_count:
-                space_remaining = target_prime_count - last_block_primes
-                print(f"  ➕ Can append up to {space_remaining:,} more primes to last block")
+                print(f"  ➕ Can append up to {target_prime_count - last_block_primes:,} more primes to last block")
+                last_block_df = pl.read_parquet(last_block_path)
+                starting_block_idx -= 1
+                if not dry_run:
+                    last_block_path.unlink()
             else:
                 print(f"  ✅ Last block is full ({last_block_primes:,} primes)")
-                last_block_path = None
-        
+
+        # Backup run files before modifying anything
         if not dry_run:
-            # Create backup
             backup_timestamp = __import__('datetime').datetime.now().strftime("%Y%m%d_%H%M%S")
             backup_runs_dir = self.backup_dir / f"runs_backup_{backup_timestamp}"
             backup_runs_dir.mkdir(exist_ok=True)
-            
             for run_file in run_files:
                 shutil.copy2(run_file, backup_runs_dir / run_file.name)
             print(f"  💾 Backed up {len(run_files)} run files to {backup_runs_dir}")
-        
-        # Split by prime ranges
-        unique_primes = all_data.select("p").unique().sort("p")
-        
-        # Handle appending to last block if possible
-        if last_block_path and last_block_primes < target_prime_count:
-            space_remaining = target_prime_count - last_block_primes
-            primes_to_append = min(space_remaining, len(unique_primes))
-            
-            if primes_to_append > 0:
-                # Get primes to append
-                append_primes = unique_primes.slice(0, primes_to_append)
-                min_append_prime = append_primes.select(pl.col("p").min()).item()
-                max_append_prime = append_primes.select(pl.col("p").max()).item()
-                
-                # Get all rows for these primes and deduplicate
-                append_data = all_data.filter(
-                    (pl.col("p") >= min_append_prime) & (pl.col("p") <= max_append_prime)
-                ).unique(['p', 'm_k', 'n_k', 'q_k'])
-                
-                print(f"    ➕ Appending {len(append_data):,} rows ({primes_to_append:,} primes) to {last_block_path.name}")
-                
-                if not dry_run:
-                    # Read existing data, append new data, write back
-                    existing_data = pl.read_parquet(last_block_path)
-                    combined_data = pl.concat([existing_data, append_data]).sort("p")
-                    combined_data.write_parquet(last_block_path)
-                    
-                    # Update block filename to reflect new max prime
-                    new_filename = f"pp_b{len(existing_blocks):03d}_p{max_append_prime}.parquet"
-                    new_path = self.blocks_dir / new_filename
-                    if new_path != last_block_path:
-                        last_block_path.rename(new_path)
-                        last_block_path = new_path
-                
-                # Remove appended primes from the list
-                unique_primes = unique_primes.slice(primes_to_append)
-        
-        # Calculate remaining blocks needed
-        remaining_primes = len(unique_primes)
-        if remaining_primes > 0:
-            blocks_needed = (remaining_primes + target_prime_count - 1) // target_prime_count
-            print(f"  📦 Creating {blocks_needed} additional blocks (~{target_prime_count:,} primes each)")
-            
-            # Create new blocks for remaining data
-            start_block_num = len(existing_blocks)
-            for block_num in range(blocks_needed):
-                start_idx = block_num * target_prime_count
-                end_idx = min((block_num + 1) * target_prime_count, remaining_primes)
-                
-                # Get prime range for this block
-                block_primes = unique_primes.slice(start_idx, end_idx - start_idx)
-                min_prime = block_primes.select(pl.col("p").min()).item()
-                max_prime = block_primes.select(pl.col("p").max()).item()
-                
-                # Get all rows for primes in this range and deduplicate
-                block_data = all_data.filter(
-                    (pl.col("p") >= min_prime) & (pl.col("p") <= max_prime)
-                ).unique(['p', 'm_k', 'n_k', 'q_k'])
-                
-                # Generate block filename: pp_b001_p7249729.parquet
-                block_filename = f"pp_b{start_block_num + block_num + 1:03d}_p{max_prime}.parquet"
+
+        # Estimate batch size from file sizes (same approach as run_ingester)
+        total_size = sum(f.stat().st_size for f in run_files)
+        avg_size = total_size / len(run_files) if run_files else 1
+        expansion_factor = 4
+        batch_size = max(1, int((memory_limit_mb * 1024 * 1024) / (avg_size * expansion_factor)))
+
+        if len(run_files) > batch_size:
+            print(f"  Processing {len(run_files)} run files in batches of {batch_size} "
+                  f"(~{memory_limit_mb}MB memory limit)")
+
+        total_integrated = 0
+        file_batches = [run_files[i:i + batch_size] for i in range(0, max(len(run_files), 1), batch_size)]
+        if not run_files:
+            file_batches = [[]]
+
+        for batch_idx, file_batch in enumerate(file_batches):
+            data_parts = []
+
+            # On the first batch, include the partial last block
+            if batch_idx == 0 and last_block_df is not None:
+                data_parts.append(last_block_df)
+                last_block_df = None
+
+            for f in file_batch:
+                try:
+                    data_parts.append(pl.read_parquet(f))
+                except Exception as e:
+                    print(f"    ⚠️  Skipping corrupt run file {f.name}: {e}")
+
+            if not data_parts:
+                continue
+
+            raw_data = pl.concat(data_parts)
+            del data_parts
+
+            before = raw_data.height
+            data_to_block = raw_data.unique().sort("p")
+            del raw_data
+            after = data_to_block.height
+            if before > after:
+                print(f"  Batch {batch_idx + 1}: removed {before - after:,} duplicate rows")
+
+            # Build prime → block_id mapping and partition in a single pass
+            unique_primes = data_to_block.select("p").unique().sort("p")
+            n_primes = unique_primes.height
+            total_integrated += n_primes
+
+            prime_block_map = (
+                unique_primes.with_row_index("index")
+                .with_columns(
+                    block_id=(pl.col("index") // target_prime_count) + starting_block_idx
+                )
+                .select("p", "block_id")
+            )
+
+            tagged = data_to_block.join(prime_block_map, on="p", how="left")
+            partitions = tagged.partition_by("block_id", as_dict=True)
+
+            for _key, block_data in sorted(partitions.items()):
+                block_id = block_data["block_id"][0]
+                min_prime = block_data["p"].min()
+                max_prime = block_data["p"].max()
+                block_unique_primes = block_data["p"].n_unique()
+
+                block_filename = f"pp_b{block_id + 1:03d}_p{max_prime}.parquet"
                 block_path = self.blocks_dir / block_filename
-                
-                block_rows = len(block_data)
-                block_unique_primes = block_data.select(pl.col("p").n_unique()).item()
-                
-                print(f"    📦 {block_filename}: {block_rows:,} rows, {block_unique_primes:,} primes ({min_prime:,} to {max_prime:,})")
-                
+
+                print(f"    📦 {block_filename}: {len(block_data):,} rows, {block_unique_primes:,} primes ({min_prime:,} to {max_prime:,})")
+
                 if not dry_run:
-                    block_data.write_parquet(block_path)
-        else:
-            print("  ✅ All data appended to existing blocks")
+                    block_data.drop("block_id").write_parquet(
+                        block_path, compression="zstd", compression_level=1
+                    )
+
+            # Advance block index for next batch
+            if partitions:
+                starting_block_idx = max(
+                    part["block_id"][0] for part in partitions.values()
+                ) + 1
+
+            del data_to_block, unique_primes, prime_block_map, tagged, partitions
+
+            if len(run_files) > batch_size:
+                files_done = min((batch_idx + 1) * batch_size, len(run_files))
+                print(f"  Batch {batch_idx + 1}: {files_done}/{len(run_files)} files processed")
+
+        print(f"  📈 Integrated {total_integrated:,} unique prime entries into blocks")
     
     def show_block_summary(self, use_blocks: bool = True):
         """Show partition summary using glob patterns (no aggregation needed)."""
@@ -389,7 +408,7 @@ class BlockManager:
         total = int(lf.select(pl.col('p').n_unique()).collect().item())
         if total == 0:
             return {}
-        P = Primes(proof=False)
+        P = Primes()
         # Quick check for prefix start
         first_data = self._prime_at_index(lf, 0)
         if first_data != int(P.unrank(0)):
@@ -526,7 +545,7 @@ def main():
         infos = sorted_blocks_by_data()
         if infos:
             cumulative = 0
-            P = Primes(proof=False)
+            P = Primes()
             rows = []
             prev_max = None
             for info in infos:
@@ -558,7 +577,7 @@ def main():
             return
         # Build cumulative table (small N; loop acceptable for CLI)
         cumulative = 0
-        P = Primes(proof=False)
+        P = Primes()
         rows = []
         mismatches = []
         gaps = []

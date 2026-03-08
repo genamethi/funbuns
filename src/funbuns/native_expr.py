@@ -27,7 +27,8 @@ def _lib_path() -> Path:
     # 1. Try importlib (installed via maturin develop / pip)
     try:
         import funbuns_native as _mod
-        return Path(_mod.__file__)
+        if _mod.__file__ is not None:
+            return Path(_mod.__file__)
     except ImportError:
         pass
 
@@ -51,9 +52,10 @@ def _plugin_path() -> str:
 
 def v_ell(expr: pl.Expr, ell: int) -> pl.Expr:
     """ℓ-adic valuation v_ℓ(n) for each element. Returns Int32."""
-    return expr.register_plugin(
-        lib=_plugin_path(),
-        symbol="v_ell",
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="v_ell",
+        args=[expr],
         is_elementwise=True,
         kwargs={"ell": ell},
     )
@@ -61,53 +63,79 @@ def v_ell(expr: pl.Expr, ell: int) -> pl.Expr:
 
 def omega(expr: pl.Expr) -> pl.Expr:
     """Number of distinct prime factors ω(n). Returns UInt8."""
-    return expr.register_plugin(
-        lib=_plugin_path(),
-        symbol="omega",
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="omega",
+        args=[expr],
         is_elementwise=True,
     )
 
 
 def big_omega(expr: pl.Expr) -> pl.Expr:
     """Total prime factors with multiplicity Ω(n). Returns UInt8."""
-    return expr.register_plugin(
-        lib=_plugin_path(),
-        symbol="big_omega",
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="big_omega",
+        args=[expr],
         is_elementwise=True,
     )
 
 
 def dominant_share(expr: pl.Expr) -> pl.Expr:
     """Dominant share: max(v_q·ln q)/ln n. Returns Float64."""
-    return expr.register_plugin(
-        lib=_plugin_path(),
-        symbol="dominant_share",
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="dominant_share",
+        args=[expr],
         is_elementwise=True,
     )
 
 
 def mobius(expr: pl.Expr) -> pl.Expr:
     """Möbius function μ(n). Returns Int8."""
-    return expr.register_plugin(
-        lib=_plugin_path(),
-        symbol="mobius",
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="mobius",
+        args=[expr],
         is_elementwise=True,
     )
 
 
 def is_prime_power(expr: pl.Expr) -> pl.Expr:
     """Check if n is a prime power. Returns Boolean."""
-    return expr.register_plugin(
-        lib=_plugin_path(),
-        symbol="is_prime_power",
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="is_prime_power",
+        args=[expr],
         is_elementwise=True,
     )
 
 
 def largest_prime_factor(expr: pl.Expr) -> pl.Expr:
     """Largest prime factor of n. Returns Int64."""
-    return expr.register_plugin(
-        lib=_plugin_path(),
-        symbol="largest_prime_factor",
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="largest_prime_factor",
+        args=[expr],
+        is_elementwise=True,
+    )
+
+
+def dominant_q(expr: pl.Expr) -> pl.Expr:
+    """Dominant prime: the prime whose v_q·ln(q)/ln(n) is maximal. Returns Int64."""
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="dominant_q",
+        args=[expr],
+        is_elementwise=True,
+    )
+
+
+def dominant_exp(expr: pl.Expr) -> pl.Expr:
+    """Exponent of the dominant prime factor. Returns UInt8."""
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="dominant_exp",
+        args=[expr],
         is_elementwise=True,
     )

@@ -8,7 +8,8 @@ name = "funbuns_native"
 crate-type = ["cdylib"]
 
 [dependencies]
-polars = { version = "0.46", default-features = false }
-pyo3 = { version = "0.23", features = ["extension-module"] }
+polars = { version = "0.48", default-features = false, features = ["dtype-i8", "dtype-u8"] }
+polars-arrow = { version = "0.48" }
+pyo3 = { version = "0.24", features = ["extension-module"] }
 pyo3-polars = { version = "0.21", features = ["derive"] }
 serde = { version = "1", features = ["derive"] }

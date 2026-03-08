@@ -1,6 +1,7 @@
 #![allow(clippy::unused_unit)]
 
 use polars::prelude::*;
+use polars::prelude::arity::unary_elementwise_values;
 use pyo3::prelude::*;
 use pyo3_polars::derive::polars_expr;
 use serde::Deserialize;
@@ -39,7 +40,7 @@ struct VEllKwargs {
 fn v_ell(inputs: &[Series], kwargs: VEllKwargs) -> PolarsResult<Series> {
     let ca = inputs[0].i64()?;
     let ell = kwargs.ell;
-    let out: Int32Chunked = ca.apply_values_generic(|n| v_ell_scalar(n, ell));
+    let out: Int32Chunked = unary_elementwise_values(ca, |n| v_ell_scalar(n, ell));
     Ok(out.into_series())
 }
 
@@ -87,7 +88,7 @@ fn omega_scalar(mut n: i64) -> u8 {
 #[polars_expr(output_type=UInt8)]
 fn omega(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].i64()?;
-    let out: UInt8Chunked = ca.apply_values_generic(|n| omega_scalar(n));
+    let out: UInt8Chunked = unary_elementwise_values(ca, |n| omega_scalar(n));
     Ok(out.into_series())
 }
 
@@ -128,18 +129,22 @@ fn big_omega_scalar(mut n: i64) -> u8 {
 #[polars_expr(output_type=UInt8)]
 fn big_omega(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].i64()?;
-    let out: UInt8Chunked = ca.apply_values_generic(|n| big_omega_scalar(n));
+    let out: UInt8Chunked = unary_elementwise_values(ca, |n| big_omega_scalar(n));
     Ok(out.into_series())
 }
 
 // ---------------------------------------------------------------------------
-// Dominant share: max(v_q(n)·ln(q)) / ln(n)
+// Dominant factor analysis: share, prime (q), and exponent
 // ---------------------------------------------------------------------------
 
+/// Returns (dominant_q, dominant_exp, dominant_share) for n.
+/// dominant_q: the prime whose v_q·ln(q)/ln(n) is maximal
+/// dominant_exp: the exponent of that prime in the factorization
+/// dominant_share: max(v_q·ln(q)) / ln(n)
 #[inline]
-fn dominant_share_scalar(mut n: i64) -> f64 {
+fn dominant_triple(mut n: i64) -> (i64, u32, f64) {
     if n <= 1 {
-        return if n == 1 { 1.0 } else { 0.0 };
+        return if n == 1 { (1, 0, 1.0) } else { (0, 0, 0.0) };
     }
     if n < 0 {
         n = -n;
@@ -147,6 +152,8 @@ fn dominant_share_scalar(mut n: i64) -> f64 {
 
     let log_n = (n as f64).ln();
     let mut max_share: f64 = 0.0;
+    let mut dom_q: i64 = 0;
+    let mut dom_e: u32 = 0;
 
     // Factor out 2
     if n % 2 == 0 {
@@ -158,6 +165,8 @@ fn dominant_share_scalar(mut n: i64) -> f64 {
         let share = (e as f64) * (2.0_f64).ln() / log_n;
         if share > max_share {
             max_share = share;
+            dom_q = 2;
+            dom_e = e;
         }
     }
 
@@ -172,26 +181,68 @@ fn dominant_share_scalar(mut n: i64) -> f64 {
             let share = (e as f64) * (d as f64).ln() / log_n;
             if share > max_share {
                 max_share = share;
+                dom_q = d;
+                dom_e = e;
             }
         }
         d += 2;
     }
     if n > 1 {
-        // n itself is a remaining prime factor with exponent 1
         let share = (n as f64).ln() / log_n;
         if share > max_share {
             max_share = share;
+            dom_q = n;
+            dom_e = 1;
         }
     }
 
-    max_share
+    (dom_q, dom_e, max_share)
+}
+
+#[inline]
+fn dominant_share_scalar(n: i64) -> f64 {
+    dominant_triple(n).2
 }
 
 /// Polars expression: dominant_share(col) -> Float64 column.
 #[polars_expr(output_type=Float64)]
 fn dominant_share(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].i64()?;
-    let out: Float64Chunked = ca.apply_values_generic(|n| dominant_share_scalar(n));
+    let out: Float64Chunked = unary_elementwise_values(ca, |n| dominant_share_scalar(n));
+    Ok(out.into_series())
+}
+
+// ---------------------------------------------------------------------------
+// Dominant prime: which prime factor has the largest share
+// ---------------------------------------------------------------------------
+
+#[inline]
+fn dominant_q_scalar(n: i64) -> i64 {
+    dominant_triple(n).0
+}
+
+/// Polars expression: dominant_q(col) -> Int64 column of dominant primes.
+#[polars_expr(output_type=Int64)]
+fn dominant_q(inputs: &[Series]) -> PolarsResult<Series> {
+    let ca = inputs[0].i64()?;
+    let out: Int64Chunked = unary_elementwise_values(ca, |n| dominant_q_scalar(n));
+    Ok(out.into_series())
+}
+
+// ---------------------------------------------------------------------------
+// Dominant exponent: exponent of the dominant prime factor
+// ---------------------------------------------------------------------------
+
+#[inline]
+fn dominant_exp_scalar(n: i64) -> u8 {
+    dominant_triple(n).1 as u8
+}
+
+/// Polars expression: dominant_exp(col) -> UInt8 column of dominant exponents.
+#[polars_expr(output_type=UInt8)]
+fn dominant_exp(inputs: &[Series]) -> PolarsResult<Series> {
+    let ca = inputs[0].i64()?;
+    let out: UInt8Chunked = unary_elementwise_values(ca, |n| dominant_exp_scalar(n));
     Ok(out.into_series())
 }
 
@@ -244,7 +295,7 @@ fn mobius_scalar(mut n: i64) -> i8 {
 #[polars_expr(output_type=Int8)]
 fn mobius(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].i64()?;
-    let out: Int8Chunked = ca.apply_values_generic(|n| mobius_scalar(n));
+    let out: Int8Chunked = unary_elementwise_values(ca, |n| mobius_scalar(n));
     Ok(out.into_series())
 }
 
@@ -264,7 +315,7 @@ fn is_prime_power_scalar(n: i64) -> bool {
 #[polars_expr(output_type=Boolean)]
 fn is_prime_power(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].i64()?;
-    let out: BooleanChunked = ca.apply_values_generic(|n| is_prime_power_scalar(n));
+    let out: BooleanChunked = unary_elementwise_values(ca, |n| is_prime_power_scalar(n));
     Ok(out.into_series())
 }
 
@@ -310,7 +361,7 @@ fn largest_prime_factor_scalar(mut n: i64) -> i64 {
 #[polars_expr(output_type=Int64)]
 fn largest_prime_factor(inputs: &[Series]) -> PolarsResult<Series> {
     let ca = inputs[0].i64()?;
-    let out: Int64Chunked = ca.apply_values_generic(|n| largest_prime_factor_scalar(n));
+    let out: Int64Chunked = unary_elementwise_values(ca, |n| largest_prime_factor_scalar(n));
     Ok(out.into_series())
 }
 
