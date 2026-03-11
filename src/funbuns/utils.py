@@ -201,13 +201,21 @@ def resume_p(verbose: bool = False) -> int:
     #Really at the moment I don't have the code written to work without initial data.
     try:
         data_dir = get_data_dir()
-        block_pattern = str(data_dir / "blocks" / "pp_b*.parquet")
+        block_dir = data_dir / "blocks"
+        block_pattern = str(block_dir / "pp_b*.parquet")
+
+        # Check if any block files exist before scanning
+        if not block_dir.exists() or not any(block_dir.glob("pp_b*.parquet")):
+            if verbose:
+                logging.info("No block parquet files found, starting fresh")
+            return None
+
         init_p = pl.scan_parquet(block_pattern).select(
                 pl.col("p").max()
         ).collect().item()
 
         return init_p
-        
+
     except Exception as e:
         source = "block files"
         logging.error(f"Error reading parquet {source}: {e}")
@@ -235,8 +243,9 @@ def append_data(df: pl.DataFrame, buffer_size: int = None, filepath=None, verbos
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     pid = os.getpid()
     run_file = runs_dir / f"pparts_run_{timestamp}_{pid}.parquet"
-    df.write_parquet(run_file)
-    
+    df.write_parquet(run_file, compression="zstd", compression_level=1,
+                     row_group_size=min(len(df), 100_000))
+
     if verbose:
         logging.info(f"Data written to run file: {run_file.name}")
         logging.info(f"Batch size: {len(df)} rows")

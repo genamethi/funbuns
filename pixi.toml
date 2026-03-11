@@ -10,13 +10,18 @@ serve = "python -m http.server 8000 -d data"
 bmgr = "python -m funbuns.block_manager"
 bmgr-integrate = "python -m funbuns.block_manager --integrate-check"
 bmgr-integrity = "python -m funbuns.block_manager --integrity"
+ladic = "funbuns --ladic"
+build-native = "cd funbuns_native && maturin develop --release"
 
 [dependencies]
-sagelib = "==10.6"
+
 altair = ">=6.0.0,<7"
-tqdm = ">=4.67.1,<5"
-psutil = ">=7.1.3,<8"
-polars = ">=1.36.0,<2"
+tqdm = ">=4.67.3,<5"
+psutil = ">=7.2.2,<8"
+polars = ">=1.38.1,<2"
+py-spy = ">=0.4.1,<0.5"
+python = "==3.12"
+sage = "==10.7"
 
 [tool.funbuns]
 buffer_size = 10000
@@ -39,7 +44,6 @@ funbuns = { path = ".", editable = true }
 dev = []
 
 [tool.pixi.feature.dev.dependencies]
-sage = ">=10.6"
 
 [tool.pixi.environments]
 dev = ["dev"]

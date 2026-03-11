@@ -3,9 +3,10 @@ Main entry point for prime power partition analysis.
 """
 
 import argparse
+import sys
 import psutil
 from .core import PPManager
-from .utils import setup_logging, get_config, setup_analysis_mode, generate_partition_summary
+from .utils import setup_logging, get_config, setup_analysis_mode, generate_partition_summary, get_data_dir
 from .dataprep import prepare_prime_powers
 from .viewer import generate_dashboard
 import polars as pl
@@ -13,13 +14,18 @@ import polars as pl
 #TODO: Rename this from funbuns lol
 #TODO: Reduce stdout noise during lvl 0, implement different verbosity levels.
 #TODO: Fix semaphore leak issue: Probably memory management issues during file saving.
-#TODO: Develop Rust plugin for fast table method for small prime/prime power checks
-#TODO: Consider implementing some the modules from pppart+adics and some tda/ph
 #TODO: Fix issues with large data and Altair plots.
-##     This one is requires learning a bit more about Altair,
-##     and I'll probably need to develop a better webserver solution.
 #TODO: Review "temp-scripts folder" and see if I can streamline the data management modules.
 
+
+def _check_block_data() -> bool:
+    """Check that block data exists. Returns True if blocks found."""
+    block_dir = get_data_dir() / "blocks"
+    if not block_dir.exists() or not list(block_dir.glob("pp_b*.parquet")):
+        print("Error: No block data found in data/blocks/.")
+        print("Run `funbuns -n <N>` first to generate prime partition data.")
+        return False
+    return True
 
 
 def main():
@@ -40,7 +46,7 @@ def main():
                        help='Show summary of all block files')
 
     #TODO: Re-implement this with VegaFusion
-    parser.add_argument('--view', action='store_true',                        
+    parser.add_argument('--view', action='store_true',
                        help='Generate web-based reports using Altair')
     #TODO: Implement debug mode and keep this as level 1 verbosity (level 0 is default)
     parser.add_argument('-v', '--verbose', action='store_true',
@@ -49,35 +55,147 @@ def main():
     parser.add_argument('-d', '-vv', '--debug', action='store_true',
                         help='More verbose with profiling of memory usage and timing data.')
 
-    #TODO: Re-implement this with Rust based Polars plugin, maybe using Malacite or FFI interface with Cython.
-    #TODO: This doesn't need to be here.
     parser.add_argument('-g', '--genpp', type=int, metavar='N',
                        help='Prepare prime powers data for first N primes (p^1 through p^100)')
-    
+
+    # ℓ-adic analysis
+    parser.add_argument('--ladic', action='store_true',
+                       help='Run ℓ-adic Diophantine analysis on obstructed primes')
+    parser.add_argument('--ladic-limit', type=int, default=None, metavar='N',
+                       help='Limit ℓ-adic analysis to first N obstructed primes (implies --ladic)')
+    parser.add_argument('--ladic-gap', type=int, default=None, metavar='P',
+                       help='Deep gap-filling analysis for a single prime P')
+
+    # Spectral analysis
+    parser.add_argument('--spectral', action='store_true',
+                       help='Run spectral/harmonic analysis on obstruction indicator')
+    parser.add_argument('--clocks', type=int, default=None, metavar='N',
+                       help='Run prime clock superposition analysis with first N primes')
+
+    # Fixed-modulus analysis
+    parser.add_argument('--fixed-mod', action='store_true',
+                       help='Run fixed-modulus ring analysis (local obstructions, Hensel lifting, CRT)')
+    parser.add_argument('--fixed-mod-limit', type=int, default=None, metavar='N',
+                       help='Limit fixed-mod analysis to first N obstructed primes (implies --fixed-mod)')
+
     args = parser.parse_args()
-    
+
+    # --ladic-limit implies --ladic
+    if args.ladic_limit is not None:
+        args.ladic = True
+
+    # --fixed-mod-limit implies --fixed-mod
+    if args.fixed_mod_limit is not None:
+        args.fixed_mod = True
+
+    # Identify which analysis modes were requested
+    analysis_modes = []
+    if args.view:
+        analysis_modes.append('view')
+    if args.genpp:
+        analysis_modes.append('genpp')
+    if args.show_runs:
+        analysis_modes.append('show_runs')
+    if args.ladic:
+        analysis_modes.append('ladic')
+    if args.ladic_gap is not None:
+        analysis_modes.append('ladic_gap')
+    if args.spectral:
+        analysis_modes.append('spectral')
+    if args.clocks is not None:
+        analysis_modes.append('clocks')
+    if args.fixed_mod:
+        analysis_modes.append('fixed_mod')
+
+    # Warn about ignored flags when using special modes
+    if analysis_modes and analysis_modes != ['view']:
+        ignored = []
+        if args.num_primes is not None and 'ladic' in analysis_modes:
+            ignored.append('-n/--num-primes')
+        if args.batch_size != 10000 and args.num_primes is None:
+            ignored.append('-b/--batch-size')
+        if args.processes is not None and args.num_primes is None:
+            ignored.append('-p/--processes')
+        if args.temp and args.num_primes is None:
+            ignored.append('-t/--temp')
+        if args.data_file and 'view' not in analysis_modes:
+            ignored.append('--data-file')
+        if ignored:
+            print(f"Note: {', '.join(ignored)} ignored in this mode.\n")
+
     # Handle view mode
     if args.view:
         generate_dashboard(args.data_file)
         return
-    
+
     # Handle prep mode
     if args.genpp:
         prepare_prime_powers(args.genpp)
         return
-    
+
     # Handle show-runs mode
     if args.show_runs:
         from .utils import show_run_files_summary
         show_run_files_summary()
         return
-    
 
-    
-    # Ensure -n is provided when not in view/prep/show-runs mode
+    # Handle gap-filling (standalone, doesn't need block data check for arbitrary primes)
+    if args.ladic_gap is not None:
+        from .ladic import gap_filling_analysis
+        df = gap_filling_analysis(args.ladic_gap)
+        print(f"\nGap-filling analysis for p = {args.ladic_gap}")
+        print(f"{'m':>4}  {'r':>14}  {'\u03c9':>3}  {'\u03a9':>3}  {'share':>7}  factorization")
+        print("-" * 70)
+        for row in df.iter_rows(named=True):
+            print(f"{row['m']:>4}  {row['r']:>14}  {row['omega']:>3}  "
+                  f"{row['big_omega']:>3}  {row['dominant_share']:>7.4f}  {row['factorization']}")
+        return
+
+    # Analysis modes that need block data
+    ran_analysis = False
+
+    if args.ladic:
+        if not _check_block_data():
+            return
+        from .ladic import run_ladic_analysis
+        run_ladic_analysis(limit=args.ladic_limit, verbose=args.verbose)
+        ran_analysis = True
+
+    if args.spectral:
+        if not _check_block_data():
+            return
+        from .ladic import (obstruction_indicator, spectral_analysis_obstruction,
+                            save_analysis)
+        print("=== Spectral Analysis of Obstruction Indicator ===\n")
+        indicator = obstruction_indicator(verbose=args.verbose)
+        spectrum = spectral_analysis_obstruction(indicator, verbose=args.verbose)
+        save_analysis(indicator, "obstruction_indicator")
+        save_analysis(spectrum, "obstruction_spectrum")
+        ran_analysis = True
+
+    if args.clocks is not None:
+        if not _check_block_data():
+            return
+        from .ladic import clock_analysis, save_analysis
+        print(f"=== Prime Clock Superposition (N={args.clocks}) ===\n")
+        clocks = clock_analysis(limit=args.clocks, verbose=args.verbose)
+        save_analysis(clocks, "clock_superposition")
+        ran_analysis = True
+
+    if args.fixed_mod:
+        if not _check_block_data():
+            return
+        from .fixed_mod import run_fixed_mod_analysis
+        run_fixed_mod_analysis(limit=args.fixed_mod_limit, verbose=args.verbose)
+        ran_analysis = True
+
+    if ran_analysis:
+        return
+
+    # Default mode: prime generation (requires -n)
     if args.num_primes is None:
-        parser.error("-n/--number is required when not using --view or --prep modes")
-    
+        parser.error("-n/--num-primes is required when not using --view, --genpp, --ladic, --spectral, --clocks, or --fixed-mod")
+
     # Determine number of workers
     if args.processes is not None:
         cores = args.processes
@@ -85,26 +203,26 @@ def main():
     else:
         cores = psutil.cpu_count(logical=False)
         print(f"Using {cores} workers (physical cores)")
-    
+
     #See utils.py
     setup_logging()
-    
+
     # Get configuration and setup analysis mode
     #See get_config in utils.py
     config = get_config()
     buffer_size = args.batch_size * 2
 
-    
+
     # Setup analysis mode (handles temp, fresh, resume logic) (in utils.py)
     init_p, append_func, data_file = setup_analysis_mode(args, config)
-    
+
     if args.temp:
         print(f"Running in temporary mode: {data_file}")
 
     # Create PPManager instance and run
     manager = PPManager(init_p, args.num_primes, args.batch_size, cores, buffer_size, append_func, args.verbose)
     manager.run_gen()
-    
+
     # Show partition summary
     #if args.temp:
         #generate_partition_summary(data_file, verbose=args.verbose)

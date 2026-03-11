@@ -139,7 +139,7 @@ def worker_batch(prime_batch, verbose=False):
 class PPBatchFeeder:
     """Efficient batch generator using Polars Series.reshape() for batching."""
     
-    def __init__(self, init_p: int, num_primes: int, batch_size: int, verbose: bool = False):
+    def __init__(self, init_p: int = 2, num_primes: int = 0, batch_size: int = 10000, verbose: bool = False):
         """
         Initialize batch feeder using Polars reshape for optimal batching.
         
@@ -161,8 +161,8 @@ class PPBatchFeeder:
 
         start_idx = prime_pi(init_p)
 
-        P = Primes(proof=False)
-        
+        P = Primes()
+
         start_prime = next_prime(init_p)
         final_prime = P.unrank(start_idx + num_primes - 1)
                  
@@ -180,52 +180,55 @@ class PPBatchFeeder:
 
 
 class PPConsumer:
-    """Shared consumer that collects DataFrames and manages batch saves."""
-    
-    def __init__(self, buffer_size: int, save_callback):
+    """Shared consumer that collects DataFrames and manages batch saves.
+
+    Memory-adaptive: monitors process RSS and flushes early if memory
+    usage exceeds a configurable fraction of available system memory.
+    """
+
+    def __init__(self, buffer_size: int, save_callback, memory_pct_limit: float = 0.70):
         """
-        Initialize consumer.
-        
         Args:
-            buffer_size: Integer - number of results to accumulate before saving
-            save_callback: Function to call for saving data
+            buffer_size: Number of results to accumulate before saving.
+            save_callback: Function to call for saving data.
+            memory_pct_limit: Flush early if RSS exceeds this fraction of total RAM.
         """
         self.buffer_size = buffer_size
         self.save_callback = save_callback
-        self.df_buffer = []  # DataFrame buffer
+        self.memory_pct_limit = memory_pct_limit
+        self.df_buffer = []
         self.result_count = 0
-    
+
+    def _memory_pressure(self) -> bool:
+        """Check if we're approaching memory limits."""
+        try:
+            import psutil
+            mem = psutil.virtual_memory()
+            return mem.percent / 100.0 > self.memory_pct_limit
+        except Exception:
+            return False
+
     def add_results(self, results_df):
-        """
-        Add DataFrame results.
-        
-        Args:
-            results_df: Polars DataFrame with partition results
-        """
         if results_df is not None and results_df.height > 0:
             self.df_buffer.append(results_df)
             self.result_count += results_df.height
-            
-            # By using 'while', we handle cases where a single large
-            # batch might be much larger than the buffer_size.
-            while self.result_count >= self.buffer_size:
+
+            while self.result_count >= self.buffer_size or self._memory_pressure():
                 self._flush_results()
-    
+                if self.result_count == 0:
+                    break
+
     def _flush_results(self):
         """Flush accumulated DataFrames to storage."""
         if not self.df_buffer:
             return
-        
-        # Concatenate all DataFrames
+
         combined_df = pl.concat(self.df_buffer)
-        
-        # Call save callback with buffer_size for logging control
         self.save_callback(combined_df, self.buffer_size)
-        
-        # Reset accumulation
+
         self.df_buffer = []
         self.result_count = 0
-    
+
     def finalize(self):
         """Flush any remaining DataFrames."""
         self._flush_results()
