@@ -10,8 +10,8 @@ Architecture:
   - Block data (data/blocks/) is the source of truth: {p, m_k, n_k, q_k}
   - Remainders r = p - 2^m are computed lazily from blocks
   - Rust plugin (native_expr) handles vectorized arithmetic: omega, big_omega,
-    dominant_share, mu, is_prime_power, largest_prime_factor
-  - SageMath Zp handles ℓ-adic valuations (PARI/NTL backend)
+    dominant_share, dominant_q, dominant_exp, mu, is_prime_power,
+    largest_prime_factor, v_ell
   - SageMath factor() only used for single-prime deep dives (gap_filling)
 """
 
@@ -21,41 +21,6 @@ from math import log, sqrt, floor
 from pathlib import Path
 from typing import Optional
 from .utils import get_data_dir
-
-#These helpers are ridiculous an unnecessary. Rewrite without.
-
-
-# ---------------------------------------------------------------------------
-# SageMath helpers (used for gap_filling, lattice, and Zp valuations)
-# ---------------------------------------------------------------------------
-#Don't just add proof=False whereever you think it will work. Look at the documentaiton... Don't guess.
-def _sage_factor(n: int) -> list[tuple[int, int]]:
-    """Factor n using SageMath's PARI/GP. proof=False uses BPSW."""
-    from sage.all import factor, ZZ
-    return list(factor(ZZ(n)))
-
-#unncessary function overhead
-def _sage_is_prime(n: int) -> bool:
-    from sage.all import is_prime
-    return is_prime(n, proof=False)
-
-#gross remove
-def _sage_valuation_batch(r_values: list[int], ell: int) -> list[int]:
-    """Batch ℓ-adic valuation using SageMath Zp ring (PARI-backed)."""
-    from sage.all import Zp
-    R = Zp(ell, prec=64, type='fixed-mod')
-    return [int(R(abs(r)).valuation()) if r > 0 else -1 for r in r_values]
-
-#This is unmotivated. remove.
-def _clear_sage_caches():
-    """Clear SageMath internal caches to prevent memory leaks."""
-    import gc
-    try:
-        from sage.all import coercion_model
-        coercion_model.reset_cache()
-    except Exception:
-        pass
-    gc.collect()
 
 
 # ---------------------------------------------------------------------------
@@ -121,19 +86,24 @@ def _expand_remainders(primes_lf: pl.LazyFrame) -> pl.LazyFrame:
         )
         .explode('m')
         .with_columns(
-            (pl.col('p') - pl.lit(2).pow(pl.col('m')).cast(pl.Int64)).alias('r')
+            (pl.col('p') - pl.lit(2).cast(pl.Int64).pow(pl.col('m'))).alias('r')
         )
         .filter(pl.col('r') > 0)
         .drop('max_m')
     )
 
 
-def _apply_native_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
-    """Add arithmetic columns via Rust plugin on column 'r'."""
-    from .native_expr import (omega, big_omega, dominant_share, dominant_q,
-                              dominant_exp, mobius, is_prime_power)
+def _apply_native_columns(lf: pl.LazyFrame,
+                          filtration_primes: Optional[list[int]] = None,
+                          ) -> pl.LazyFrame:
+    """Add arithmetic columns via Rust plugin on column 'r'.
 
-    return lf.with_columns([
+    If filtration_primes is given, also adds v_ℓ(r) columns for each ℓ.
+    """
+    from .native_expr import (omega, big_omega, dominant_share, dominant_q,
+                              dominant_exp, mobius, is_prime_power, v_ell)
+
+    cols = [
         omega(pl.col('r')).alias('omega'),
         big_omega(pl.col('r')).alias('big_omega'),
         dominant_q(pl.col('r')).alias('dominant_q'),
@@ -141,7 +111,11 @@ def _apply_native_columns(lf: pl.LazyFrame) -> pl.LazyFrame:
         dominant_share(pl.col('r')).alias('dominant_share'),
         mobius(pl.col('r')).alias('mu'),
         is_prime_power(pl.col('r')).alias('is_prime_power'),
-    ])
+    ]
+    if filtration_primes:
+        for ell in filtration_primes:
+            cols.append(v_ell(pl.col('r'), ell=ell).alias(f'v_{ell}'))
+    return lf.with_columns(cols)
 
 
 def _classify_remainder_expr() -> pl.Expr:
@@ -159,11 +133,14 @@ def _classify_remainder_expr() -> pl.Expr:
 # Block-by-block analysis (memory-bounded)
 # ---------------------------------------------------------------------------
 
-def _analyze_block(block_path: Path, obstructed_only: bool = True) -> pl.DataFrame:
+def _analyze_block(block_path: Path, obstructed_only: bool = True,
+                   filtration_primes: Optional[list[int]] = None,
+                   ) -> pl.DataFrame:
     """Analyze a single block file: find target primes, expand remainders,
     apply Rust plugin. Returns a DataFrame for this block only.
 
     For obstructed_only=True, only processes primes with m_k == 0.
+    If filtration_primes is given, v_ℓ(r) columns are included.
     """
     primes_lf = pl.scan_parquet(str(block_path))
 
@@ -180,7 +157,7 @@ def _analyze_block(block_path: Path, obstructed_only: bool = True) -> pl.DataFra
         primes_lf = primes_lf.select('p').unique()
 
     remainders = _expand_remainders(primes_lf)
-    remainders = _apply_native_columns(remainders)
+    remainders = _apply_native_columns(remainders, filtration_primes)
     remainders = remainders.with_columns(_classify_remainder_expr())
 
     return remainders.collect()
@@ -326,15 +303,16 @@ def compute_ladic_filtration(analysis_df: pl.DataFrame,
 
     Creates columns named 'v_2', 'v_3', 'v_5', etc.
     """
+    from sage.all import Zp
+
     r_list = analysis_df['r'].to_list()
     new_cols = []
 
     for ell in primes:
-        col_name = f'v_{ell}'
-        vals = _sage_valuation_batch(r_list, ell)
-        new_cols.append(pl.Series(col_name, vals, dtype=pl.Int16))
+        R = Zp(ell, prec=64, type='fixed-mod')
+        vals = [int(R(abs(r)).valuation()) if r > 0 else -1 for r in r_list]
+        new_cols.append(pl.Series(f'v_{ell}', vals, dtype=pl.Int16))
 
-    _clear_sage_caches()
     return analysis_df.with_columns(new_cols)
 
 
@@ -355,74 +333,6 @@ def filtration_summary(analysis_df: pl.DataFrame,
 
 
 # ---------------------------------------------------------------------------
-# Local obstruction detection
-# ---------------------------------------------------------------------------
-
-def local_obstruction_check(p: int, moduli: Optional[list[int]] = None) -> dict:
-    """Check if p = 2^m + q^n has solutions mod each modulus."""
-    if moduli is None:
-        moduli = [3, 5, 7, 8, 9, 11, 13, 16, 25]
-
-    results = {}
-    for M in moduli:
-        powers_mod = set()
-        pw = 1
-        for _ in range(M + 1):
-            pw = (pw * 2) % M
-            powers_mod.add(pw)
-
-        small_primes = [q for q in range(2, M)
-                        if all(q % d != 0 for d in range(2, int(q**0.5) + 1)) and q > 1]
-        has_solution = False
-        for tw in powers_mod:
-            r_mod = (p - tw) % M
-            if r_mod <= 1:
-                continue
-            for q in small_primes:
-                qn = q
-                for _ in range(1, 64):
-                    if qn % M == r_mod:
-                        has_solution = True
-                        break
-                    qn = (qn * q) % M
-                    if qn == 0:
-                        break
-                if has_solution:
-                    break
-            if has_solution:
-                break
-
-        results[M] = has_solution
-
-    return results
-
-
-def find_congruence_obstructions(obstructed_primes: list[int],
-                                 moduli: Optional[list[int]] = None,
-                                 verbose: bool = False) -> pl.DataFrame:
-    """Find congruence classes that concentrate obstructions."""
-    if moduli is None:
-        moduli = [3, 4, 5, 6, 7, 8, 9, 10, 12, 16, 24, 30]
-
-    rows = []
-    for M in moduli:
-        residue_counts: dict[int, int] = {}
-        for p in obstructed_primes:
-            res = p % M
-            residue_counts[res] = residue_counts.get(res, 0) + 1
-
-        for res, count in sorted(residue_counts.items()):
-            rows.append({
-                'modulus': M,
-                'residue': res,
-                'obstructed_count': count,
-                'fraction': round(count / len(obstructed_primes), 4),
-            })
-
-    return pl.DataFrame(rows)
-
-
-# ---------------------------------------------------------------------------
 # Gap-filling: deep analysis of a single obstructed prime (uses SageMath)
 # ---------------------------------------------------------------------------
 
@@ -438,17 +348,18 @@ def compute_remainder_profile(p: int, m: int) -> dict:
                 'dominant_q': 1, 'dominant_exp': 0, 'dominant_share': 1.0,
                 'mu': 1, 'is_prime_power': False, 'factorization': '1'}
 
-    factors = _sage_factor(r)
-    omega = len(factors)
-    big_omega = sum(e for _, e in factors)
+    from sage.all import factor, ZZ
+    factors = list(factor(ZZ(r)))
+    om = len(factors)
+    big_om = sum(e for _, e in factors)
     log_r = log(r) if r > 1 else 1.0
 
     shares = [(q, e, e * log(q) / log_r) for q, e in factors]
     dom_q, dom_e, dom_share = max(shares, key=lambda t: t[2])
 
     squarefree = all(e == 1 for _, e in factors)
-    mu = ((-1) ** omega) if squarefree else 0
-    is_pp = (omega == 1)
+    mu = ((-1) ** om) if squarefree else 0
+    is_pp = (om == 1)
 
     fac_str = '\u00b7'.join(
         f"{q}^{e}" if e > 1 else str(q) for q, e in factors
@@ -456,7 +367,7 @@ def compute_remainder_profile(p: int, m: int) -> dict:
 
     return {
         'p': int(p), 'm': int(m), 'r': int(r),
-        'omega': omega, 'big_omega': big_omega,
+        'omega': om, 'big_omega': big_om,
         'dominant_q': int(dom_q), 'dominant_exp': int(dom_e),
         'dominant_share': round(dom_share, 6),
         'mu': mu, 'is_prime_power': is_pp,
@@ -609,7 +520,8 @@ def factorization_lattice(n: int) -> dict:
         return {'factors': [], 'divisor_count': 1, 'lattice_dimension': 0,
                 'lattice_points': 1, 'betti_0': 1, 'euler_char': 1}
 
-    factors = _sage_factor(n)
+    from sage.all import factor, ZZ
+    factors = list(factor(ZZ(n)))
     exponents = [e for _, e in factors]
     omega = len(factors)
     tau = 1
@@ -997,33 +909,39 @@ def _ladic_block_out_dir() -> Path:
 def _process_and_save_block(block_path: Path, out_dir: Path,
                             filtration_primes: list[int],
                             verbose: bool) -> Optional[Path]:
-    """Process one block: compute remainders, near-misses, stats, filtration.
+    """Process one block: compute all remainders with full arithmetic profile.
 
     Saves per block:
-      - ladic_{name}.parquet: best near-miss per obstructed prime (1 row/prime)
-      - stats_{name}.parquet: aggregate stats (omega counts, Erdős-Kac sums,
-        filtration pattern counts)
+      - ladic_{name}.parquet: ALL remainders per obstructed prime with
+        omega, big_omega, dominant_q, dominant_exp, dominant_share, mu,
+        is_prime_power, class, and v_ℓ(r) filtration columns.
+      - stats_{name}.parquet: aggregate stats for quick reporting
+      - omega_{name}.parquet: omega distribution counts
 
-    Returns near-miss output path, or None if no obstructed primes.
+    Returns ladic output path, or None if no obstructed primes.
     """
     block_name = block_path.stem
     out_path = out_dir / f"ladic_{block_name}.parquet"
     stats_path = out_dir / f"stats_{block_name}.parquet"
 
-    # Skip if already computed (resumable) — but recompute if schema is stale
+    # Skip if already computed (resumable) — recompute if schema is stale
+    # Version marker: bump this to force recompute (e.g. after fixing 2^m overflow)
+    _CACHE_VERSION_MARKER = 'r_v2'
     if out_path.exists() and stats_path.exists():
         try:
-            cached_cols = set(pl.read_parquet_schema(out_path).keys())
-            if 'dominant_q' in cached_cols and 'dominant_exp' in cached_cols:
-                if verbose:
-                    print(" \u2014 cached", flush=True)
+            schema = pl.read_parquet_schema(out_path)
+            cached_cols = set(schema.keys())
+            need = {'dominant_q', 'dominant_exp', 'v_2', _CACHE_VERSION_MARKER}
+            if need.issubset(cached_cols):
+                print(" \u2014 cached", flush=True)
                 return out_path
-            elif verbose:
-                print(" \u2014 recomputing (stale schema)", end="", flush=True)
+            else:
+                print(" \u2014 recomputing (stale cache)", end="", flush=True)
         except Exception:
             pass  # corrupt cache, recompute
 
-    block_df = _analyze_block(block_path, obstructed_only=True)
+    block_df = _analyze_block(block_path, obstructed_only=True,
+                              filtration_primes=filtration_primes)
 
     if block_df.height == 0:
         # Write empty marker so we don't reprocess
@@ -1032,28 +950,33 @@ def _process_and_save_block(block_path: Path, out_dir: Path,
             'ek_n': [0], 'ek_omega_sum': [0.0], 'ek_omega_sq_sum': [0.0],
             'ek_loglogr_sum': [0.0], 'ek_loglogr_sq_sum': [0.0],
         }).write_parquet(stats_path, compression="zstd")
-        if verbose:
-            print(" \u2014 no obstructed primes", flush=True)
+        print(" \u2014 no obstructed primes", flush=True)
         return None
 
     n_primes = block_df['p'].n_unique()
 
-    # Best near-miss per prime
-    best = (
-        block_df
-        .sort('dominant_share', descending=True)
-        .group_by('p')
-        .first()
-    )
-    best.write_parquet(out_path, compression="zstd", compression_level=1)
+    # Add Zp filtration columns
+    from sage.all import Zp
+    for ell in filtration_primes:
+        col_name = f'v_{ell}'
+        if col_name not in block_df.columns:
+            R = Zp(ell, prec=64, type='fixed-mod')
+            r_list = block_df['r'].to_list()
+            vals = [int(R(abs(r)).valuation()) if r > 0 else -1 for r in r_list]
+            block_df = block_df.with_columns(
+                pl.Series(col_name, vals, dtype=pl.Int16))
 
-    # Omega counts
+    # Save ALL remainders (full per-remainder data)
+    block_df = block_df.with_columns(pl.lit(True).alias(_CACHE_VERSION_MARKER))
+    block_df.write_parquet(out_path, compression="zstd", compression_level=1)
+
+    # Omega counts (for quick aggregation without reading full data)
     omega_df = (
         block_df.group_by('omega')
         .agg(pl.len().alias('count'))
     )
 
-    # Erdős-Kac running sums
+    # Erdos-Kac running sums
     ek_subset = block_df.filter(pl.col('r') > 2)
     if ek_subset.height > 0:
         omegas = ek_subset['omega'].to_numpy().astype(float)
@@ -1072,51 +995,39 @@ def _process_and_save_block(block_path: Path, out_dir: Path,
             'ek_loglogr_sum': 0.0, 'ek_loglogr_sq_sum': 0.0,
         }
 
-    # Filtration: Zp valuations → pattern counts as a DataFrame
-    r_list = block_df['r'].to_list()
-    filt_data = {}
-    for ell in filtration_primes:
-        filt_data[f'v_{ell}'] = _sage_valuation_batch(r_list, ell)
-    _clear_sage_caches()
-
-    filt_df = (
-        pl.DataFrame(filt_data)
-        .group_by([f'v_{ell}' for ell in filtration_primes])
-        .agg(pl.len().alias('count'))
-    )
-
-    # Pack everything into a single stats parquet using struct columns
     stats_df = pl.DataFrame({
         'n_primes': [n_primes],
         'n_rows': [block_df.height],
         **{k: [v] for k, v in ek_row.items()},
     })
 
-    # Save stats, omega counts, and filtration as separate parquets
     stats_df.write_parquet(stats_path, compression="zstd")
     omega_df.write_parquet(
         out_dir / f"omega_{block_name}.parquet", compression="zstd")
-    filt_df.write_parquet(
-        out_dir / f"filt_{block_name}.parquet", compression="zstd")
 
-    if verbose:
-        print(f" \u2014 {n_primes} obstructed primes, {block_df.height} rows", flush=True)
+    print(f" \u2014 {n_primes} obstructed primes, {block_df.height} rows", flush=True)
 
     del block_df
     return out_path
 
 
+def _newest_block_mtime(data_dir: Path) -> float:
+    """Return the newest mtime among block files."""
+    blocks = data_dir.joinpath("blocks").glob("pp_b*.parquet")
+    return max((f.stat().st_mtime for f in blocks), default=0.0)
+
+
 def run_ladic_analysis(limit: Optional[int] = None,
                        verbose: bool = False,
                        filtration_primes: Optional[list[int]] = None):
-    """Run the full ℓ-adic analysis pipeline, block by block.
+    """Run the full l-adic analysis pipeline, block by block.
 
     Resumable: each block's results are saved to data/ladic_blocks/.
     On re-run, already-processed blocks are skipped.
 
     Steps:
-      1. Zipf / zeta analysis on q_k frequencies (lazy scan, saved)
-      2. Block-by-block: remainders, near-misses, stats, filtration (saved per block)
+      1. Zipf / zeta analysis on q_k frequencies (invalidated when blocks change)
+      2. Block-by-block: all remainders, stats, filtration (saved per block)
       3. Aggregate saved results and report
     """
     if not _use_native():
@@ -1130,13 +1041,17 @@ def run_ladic_analysis(limit: Optional[int] = None,
 
     print("=== \u2113-adic Diophantine Analysis ===\n")
 
-    # Step 1: Zipf analysis on q_k (skip if already saved)
+    # Step 1: Zipf analysis on q_k (invalidate if blocks are newer)
     print("[1/4] Zipf / zeta analysis on q_k frequencies...")
     zipf_path = data_dir / "zipf_q_frequencies.parquet"
-    if zipf_path.exists():
+    zipf_stale = (not zipf_path.exists()
+                  or _newest_block_mtime(data_dir) > zipf_path.stat().st_mtime)
+    if not zipf_stale:
         print("  Cached \u2014 loading previous results.")
         q_zipf_df = pl.read_parquet(zipf_path)
     else:
+        if zipf_path.exists():
+            print("  Block data changed \u2014 recomputing...")
         try:
             q_zipf_df, q_zipf_params = zipf_analysis_q(verbose=verbose)
             if q_zipf_df.height > 0:
@@ -1159,52 +1074,95 @@ def run_ladic_analysis(limit: Optional[int] = None,
         print("No block data found.")
         return
 
-    total_primes = 0
+    # Count already-completed blocks (limit is relative to these)
+    already_done = 0
+    already_stems: list[str] = []
+    for block_path in block_files:
+        ladic_path = out_dir / f"ladic_{block_path.stem}.parquet"
+        stats_path = out_dir / f"stats_{block_path.stem}.parquet"
+        if ladic_path.exists() and stats_path.exists():
+            try:
+                cached_cols = set(pl.read_parquet_schema(ladic_path).keys())
+                if {'dominant_q', 'dominant_exp', 'v_2', 'r_v2'}.issubset(cached_cols):
+                    s = pl.read_parquet(stats_path)
+                    already_done += s['n_primes'][0]
+                    already_stems.append(block_path.stem)
+                    continue
+            except Exception:
+                pass
+        break  # stop at first uncached block (sequential processing)
+
+    if already_stems:
+        print(f"  {len(already_stems)} blocks already cached ({already_done} obstructed primes)")
+
+    new_primes = 0
+    processed_stems: list[str] = list(already_stems)
     for i, block_path in enumerate(block_files):
-        if verbose:
-            print(f"  Block {i + 1}/{len(block_files)}: {block_path.name}", end="", flush=True)
+        if block_path.stem in already_stems:
+            continue
+
+        print(f"  Block {i + 1}/{len(block_files)}: {block_path.name}", end="", flush=True)
 
         _process_and_save_block(block_path, out_dir, filtration_primes, verbose)
+        processed_stems.append(block_path.stem)
 
-        # Check stats for prime count (for limit)
+        # Check stats for prime count (limit is relative to new primes)
         stats_path = out_dir / f"stats_{block_path.stem}.parquet"
         if stats_path.exists():
             s = pl.read_parquet(stats_path)
-            total_primes += s['n_primes'][0]
+            new_primes += s['n_primes'][0]
 
-        if limit is not None and total_primes >= limit:
+        if limit is not None and new_primes >= limit:
             break
 
-    print(f"  {total_primes} obstructed primes processed\n")
+    total_primes = already_done + new_primes
+    print(f"  {total_primes} total obstructed primes ({new_primes} new)\n")
 
-    # Step 3: Aggregate all saved block results
+    # Step 3: Aggregate results from processed blocks only
     print("[3/4] Aggregating results...")
 
-    # Near-misses
-    nm_files = sorted(out_dir.glob("ladic_*.parquet"))
-    if not nm_files:
+    ladic_files = [out_dir / f"ladic_{stem}.parquet"
+                   for stem in processed_stems
+                   if (out_dir / f"ladic_{stem}.parquet").exists()]
+    stats_files = [out_dir / f"stats_{stem}.parquet"
+                   for stem in processed_stems
+                   if (out_dir / f"stats_{stem}.parquet").exists()]
+    omega_files = [out_dir / f"omega_{stem}.parquet"
+                   for stem in processed_stems
+                   if (out_dir / f"omega_{stem}.parquet").exists()]
+
+    if not ladic_files:
         print("No obstructed primes found.")
         return
 
-    misses = (
-        pl.scan_parquet([str(f) for f in nm_files])
-        .sort('dominant_share', descending=True)
-        .collect()
-    )
+    # Best near-miss per prime -- process block by block to avoid OOM.
+    # Each prime lives in exactly one block, so per-block group_by('p')
+    # is the only dedup needed; concat is a simple stack.
+    print("  Extracting near-misses per block...", flush=True)
+    miss_chunks: list[pl.DataFrame] = []
+    for f in ladic_files:
+        chunk = (
+            pl.scan_parquet(str(f))
+            .sort('dominant_share', descending=True)
+            .group_by('p')
+            .first()
+            .collect()
+        )
+        miss_chunks.append(chunk)
+    misses = pl.concat(miss_chunks).sort('dominant_share', descending=True)
+    del miss_chunks
     print(f"  {misses.height} obstructed primes with near-miss data")
 
     top = misses.head(10)
     print("  Top 10 nearest misses (highest dominant_share):")
-    has_dq = 'dominant_q' in misses.columns
     for row in top.iter_rows(named=True):
-        base = f"    p={row['p']}: r={row['r']}, share={row['dominant_share']:.4f}"
-        if has_dq:
-            base += f", dominant={row['dominant_q']}^{row['dominant_exp']}"
-        print(base)
+        line = f"    p={row['p']}: r={row['r']}, share={row['dominant_share']:.4f}"
+        if 'dominant_q' in misses.columns:
+            line += f", dominant={row['dominant_q']}^{row['dominant_exp']}"
+        print(line)
     print()
 
-    # Aggregate stats from per-block parquets
-    stats_files = sorted(out_dir.glob("stats_*.parquet"))
+    # Aggregate stats (tiny files, no OOM risk)
     all_stats = pl.scan_parquet([str(f) for f in stats_files]).collect()
     total_rows = int(all_stats['n_rows'].sum())
     ek_n = int(all_stats['ek_n'].sum())
@@ -1213,8 +1171,7 @@ def run_ladic_analysis(limit: Optional[int] = None,
     ek_loglogr_sum = float(all_stats['ek_loglogr_sum'].sum())
     ek_loglogr_sq_sum = float(all_stats['ek_loglogr_sq_sum'].sum())
 
-    # Omega counts
-    omega_files = sorted(out_dir.glob("omega_*.parquet"))
+    # Omega counts (tiny files, no OOM risk)
     if omega_files:
         omega_agg = (
             pl.scan_parquet([str(f) for f in omega_files])
@@ -1226,26 +1183,33 @@ def run_ladic_analysis(limit: Optional[int] = None,
     else:
         omega_agg = pl.DataFrame()
 
-    # Filtration patterns
-    filt_files = sorted(out_dir.glob("filt_*.parquet"))
+    # Filtration patterns -- aggregate block by block to avoid OOM
     v_cols = [f'v_{ell}' for ell in filtration_primes]
-    if filt_files:
-        filt_agg = (
-            pl.scan_parquet([str(f) for f in filt_files])
+    print("  Aggregating filtration patterns...", flush=True)
+    filt_chunks: list[pl.DataFrame] = []
+    for f in ladic_files:
+        chunk = (
+            pl.scan_parquet(str(f))
+            .select(v_cols)
             .group_by(v_cols)
-            .agg(pl.col('count').sum())
-            .sort('count', descending=True)
+            .agg(pl.len().alias('count'))
             .collect()
         )
-    else:
-        filt_agg = pl.DataFrame()
+        filt_chunks.append(chunk)
+    filt_agg = (
+        pl.concat(filt_chunks)
+        .group_by(v_cols)
+        .agg(pl.col('count').sum())
+        .sort('count', descending=True)
+    )
+    del filt_chunks
 
     print(f"  {total_rows} total remainder rows analyzed")
 
     # Step 4: Report
     print("\n[4/4] Results\n")
 
-    # Erdős-Kac
+    # Erdos-Kac
     print("Erdos-Kac comparison:")
     if ek_n > 0:
         emp_mean = ek_omega_sum / ek_n
@@ -1292,5 +1256,5 @@ def run_ladic_analysis(limit: Optional[int] = None,
         save_analysis(omega_agg, "density_almost_prime")
 
     print(f"\nAll results saved under {data_dir}/")
-    print(f"Per-block data in {out_dir}/ (delete to recompute)")
+    print(f"Per-block data in {out_dir}/ (full per-remainder data, delete to recompute)")
     return misses

@@ -139,7 +139,7 @@ def worker_batch(prime_batch, verbose=False):
 class PPBatchFeeder:
     """Efficient batch generator using Polars Series.reshape() for batching."""
     
-    def __init__(self, init_p: int, num_primes: int, batch_size: int, verbose: bool = False):
+    def __init__(self, init_p: int = 2, num_primes: int = 0, batch_size: int = 10000, verbose: bool = False):
         """
         Initialize batch feeder using Polars reshape for optimal batching.
         
@@ -162,7 +162,7 @@ class PPBatchFeeder:
         start_idx = prime_pi(init_p)
 
         P = Primes()
-        
+
         start_prime = next_prime(init_p)
         final_prime = P.unrank(start_idx + num_primes - 1)
                  

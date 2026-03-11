@@ -72,11 +72,21 @@ def main():
     parser.add_argument('--clocks', type=int, default=None, metavar='N',
                        help='Run prime clock superposition analysis with first N primes')
 
+    # Fixed-modulus analysis
+    parser.add_argument('--fixed-mod', action='store_true',
+                       help='Run fixed-modulus ring analysis (local obstructions, Hensel lifting, CRT)')
+    parser.add_argument('--fixed-mod-limit', type=int, default=None, metavar='N',
+                       help='Limit fixed-mod analysis to first N obstructed primes (implies --fixed-mod)')
+
     args = parser.parse_args()
 
     # --ladic-limit implies --ladic
     if args.ladic_limit is not None:
         args.ladic = True
+
+    # --fixed-mod-limit implies --fixed-mod
+    if args.fixed_mod_limit is not None:
+        args.fixed_mod = True
 
     # Identify which analysis modes were requested
     analysis_modes = []
@@ -94,6 +104,8 @@ def main():
         analysis_modes.append('spectral')
     if args.clocks is not None:
         analysis_modes.append('clocks')
+    if args.fixed_mod:
+        analysis_modes.append('fixed_mod')
 
     # Warn about ignored flags when using special modes
     if analysis_modes and analysis_modes != ['view']:
@@ -170,12 +182,19 @@ def main():
         save_analysis(clocks, "clock_superposition")
         ran_analysis = True
 
+    if args.fixed_mod:
+        if not _check_block_data():
+            return
+        from .fixed_mod import run_fixed_mod_analysis
+        run_fixed_mod_analysis(limit=args.fixed_mod_limit, verbose=args.verbose)
+        ran_analysis = True
+
     if ran_analysis:
         return
 
     # Default mode: prime generation (requires -n)
     if args.num_primes is None:
-        parser.error("-n/--num-primes is required when not using --view, --genpp, --ladic, --spectral, or --clocks")
+        parser.error("-n/--num-primes is required when not using --view, --genpp, --ladic, --spectral, --clocks, or --fixed-mod")
 
     # Determine number of workers
     if args.processes is not None:
