@@ -36,19 +36,11 @@ def _parse_block_filename(path: Path) -> Tuple[Optional[int], Optional[int]]:
 
     Fallbacks to (None, None) if pattern does not match.
     """
-    name = path.name
-    try:
-        # Expected formats: pp_bNNN_pMAX.parquet
-        base = name.replace(".parquet", "")
-        parts = base.split("_")
-        # parts: ["pp", "bNNN", "pMAX"] or ["pp", "bNNN", "pMAX", ...]
-        b_part = next((p for p in parts if p.startswith("b")), None)
-        p_part = next((p for p in parts if p.startswith("p")), None)
-        block_num = int(b_part[1:]) if b_part and b_part[1:].isdigit() else None
-        max_prime = int(p_part[1:]) if p_part and p_part[1:].isdigit() else None
-        return block_num, max_prime
-    except Exception:
+    import re
+    m = re.match(r'pp_b(\d+)_p(\d+)\.parquet$', path.name)
+    if not m:
         return None, None
+    return int(m.group(1)), int(m.group(2))
 
 
 def blocks_dir() -> Path:
@@ -57,11 +49,12 @@ def blocks_dir() -> Path:
 
 
 def list_block_files() -> List[Path]:
-    """List all block parquet files (unsorted)."""
+    """List all block parquet files sorted by max_prime from filename."""
     bdir = blocks_dir()
     if not bdir.exists():
         return []
-    return sorted(bdir.glob(BLOCK_GLOB_PATTERN))
+    files = list(bdir.glob(BLOCK_GLOB_PATTERN))
+    return sorted(files, key=lambda f: _parse_block_filename(f)[1] or 0)
 
 
 def _fast_block_bounds(path: Path) -> Tuple[Optional[int], Optional[int], Optional[int], Optional[int]]:

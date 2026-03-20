@@ -1,246 +1,169 @@
 """
 Core implementation of prime power partition algorithm: p = 2^m + q^n
 
-Following the algorithm outlined in sketch.md:
-- For each prime p, compute max_m = floor(log2(p))
-- For each m_i in [1, max_m], compute remainder = p - 2^m_i  
-- For each n_i, check if nth_root(remainder) is integer and prime
-- Use try/except pattern to avoid unnecessary computations
+For each prime p:
+  - Compute max_m = floor(log2(p))
+  - For each m in [1, max_m], check if r = p - 2^m is a prime power
+  - Record (p, m, exponent, base) for each hit; (p, 0, 0, 0) if none
+
+Workers receive (start_idx, count) as 0-indexed prime indices. Each worker
+resolves its range via P.unrank and generates primes locally. The feeder
+does no prime generation — just one prime_pi call then arithmetic.
 """
 
-from curses import init_pair
-from sage.all import prime_range, Primes, next_prime, prime_pi
+from sage.all import prime_range, Primes, prime_pi
 import polars as pl
 import numpy as np
-from itertools import batched
-from .utils import TimingCollector, convert_runs_to_blocks_auto, PARTITION_SCHEMA, PARTITION_DISTRIBUTION
+from .utils import PARTITION_SCHEMA, PARTITION_DISTRIBUTION  # noqa: F401
+
 
 class PPBatchProcessor:
     """Worker class for processing prime batches using pre-allocated arrays."""
-    
-    def __init__(self, verbose: bool = False):
-        """Initialize processor with timing collector."""
-        # Remove DataFrame storage - using arrays now
-        #if verbose:  # Use verbose flag instead of undefined debug_mode
-            #self.timer = TimingCollector(verbose=verbose)
-        #Below is from small primes table implementation, currently excised.
-        # Log remainder tolerance for integer detection (near IEEE 754 machine epsilon)
-        #self.EPSILON = 1e-15  
-        
-        # Load small primes table using utils function (always load for LSP constraint)
-        #from .utils import get_small_primes_table
-        #self.small_primes_table, self.lsp = get_small_primes_table()
-    
+
     def _process_prime_to_array(self, p):
-        """
-        Process single prime, writing results directly to pre-allocated array.
-        
-        Args:
-            p: Integer (SageMath) - the prime to decompose  
-        """
-        # Handle special cases for p = 2, 3
-        #if p == 2 or p == 3:
-            #self._write_zero_row(int(p))
-            #return
-            
-        max_m = p.exact_log(2)  # floor(log_2(p))
+        """Process single prime, writing results directly to pre-allocated array."""
+        max_m = p.exact_log(2)
         found_partition = False
         two_i = 1
-        
+        q_hits = {}  # q_base -> count; at most 2 per (p, q) pair
+        exhausted = []
+
         for m_i in range(1, max_m + 1):
             two_i <<= 1
             q_cand_i = p - two_i
-            
+
+            if exhausted and any(q_cand_i % q == 0 for q in exhausted):
+                continue
+
             (pbase, pexp) = q_cand_i.is_prime_power(proof=False, get_data=True)
-            
+
             if pexp != 0:
                 if self.current_row >= len(self.results_array):
                     self._grow_array()
                 self.results_array[self.current_row] = [p, m_i, pexp, pbase]
                 self.current_row += 1
                 found_partition = True
-        
-        # Add zero row if no partitions found
+                pb = int(pbase)
+                q_hits[pb] = q_hits.get(pb, 0) + 1
+                if q_hits[pb] >= 2:
+                    exhausted.append(pb)
+
         if not found_partition:
             if self.current_row >= len(self.results_array):
                 self._grow_array()
             self.results_array[self.current_row] = [p, 0, 0, 0]
             self.current_row += 1
-    
-    
+
     def _grow_array(self):
         """Double the array size when needed."""
-        old_size = len(self.results_array)
-        new_size = old_size * 2
-        new_array = np.zeros((new_size, 4), dtype=np.int64)
+        new_array = np.zeros((len(self.results_array) * 2, 4), dtype=np.int64)
         new_array[:self.current_row] = self.results_array[:self.current_row]
         self.results_array = new_array
 
-    
-    def process_batch(self, prime_batch):
-        """
-        Process a batch of primes using pre-allocated array.
-        
-        Args:
-            prime_batch: List of primes to process
-            
-        Returns:
-            NumPy array with partition results [p, m, n, q]
-        """
-        batch_size = len(prime_batch)
-        
-        # Estimate initial array size using empirical distribution
-        # With 10k batch size and 1.7 avg rows per prime, this is very stable
-        estimated_rows = int(batch_size * PARTITION_DISTRIBUTION['avg_rows_per_prime'] * 1.2)  # 20% buffer
-        
-        # Initialize pre-allocated array
+    def process_batch(self, prime_list):
+        """Process a list of primes, return results as NumPy array."""
+        estimated_rows = int(len(prime_list) * PARTITION_DISTRIBUTION['avg_rows_per_prime'] * 1.2)
         self.results_array = np.zeros((estimated_rows, 4), dtype=np.int64)
         self.current_row = 0
-        
-        # Process each prime directly to array
-        for prime in prime_batch:
+
+        for prime in prime_list:
             self._process_prime_to_array(prime)
-        
-        # Return only the used portion
+
         return self.results_array[:self.current_row]
 
 
-def worker_batch(prime_batch, verbose=False):
-    """
-    Module-level worker function for multiprocessing spawn compatibility.
-    
-    Args:
-        prime_batch: List of primes to process
-        verbose: Whether to enable verbose timing logging
+def worker_batch(start_idx: int, count: int) -> pl.DataFrame:
+    """Module-level worker: generate primes locally, process, return DataFrame.
 
-        
-    Returns:
-        Tuple of (DataFrame, timing_data)
+    Receives (start_idx, count) — 0-indexed prime indices. Only two
+    integers cross the process boundary instead of a pickled list.
+    Each worker uses P.unrank to resolve its index range to primes.
     """
-    processor = PPBatchProcessor(verbose=verbose)
-    result_array = processor.process_batch(prime_batch)
-    
-    # Convert raw array results to DataFrame once per worker
+    P = Primes()
+    first_prime = P.unrank(start_idx)
+    end_prime = P.unrank(start_idx + count)  # exclusive bound
+    primes = prime_range(int(first_prime), int(end_prime))
+
+    processor = PPBatchProcessor()
+    result_array = processor.process_batch(primes)
+
     if result_array.size > 0:
-        result_df = pl.DataFrame(
-            result_array,
-            schema=PARTITION_SCHEMA,
-            orient='row'
-        )
-    else:
-        # Return empty DataFrame with correct schema
-        result_df = pl.DataFrame(schema=PARTITION_SCHEMA)
-    
-    # Return timing data if debug mode is enabled
-    #timing_data = processor.timer.timings if hasattr(processor, 'timer') else []
-    return result_df #, timing_data
+        return pl.DataFrame(result_array, schema=PARTITION_SCHEMA, orient='row')
+    return pl.DataFrame(schema=PARTITION_SCHEMA)
+
+
+def _worker_star(args):
+    """Unpack (start_idx, count) tuple for imap_unordered."""
+    return worker_batch(*args)
 
 
 class PPBatchFeeder:
-    """Efficient batch generator using Polars Series.reshape() for batching."""
-    
-    def __init__(self, init_p: int = 2, num_primes: int = 0, batch_size: int = 10000, verbose: bool = False):
-        """
-        Initialize batch feeder using Polars reshape for optimal batching.
-        
-        Args:
-            init_p: IT'S ME AGAIN.
-            num_primes: Total number of primes to process
-            batch_size: Size of each prime batch
-            verbose: Enable verbose output for profiling
+    """Compute batch boundaries as index slices — no prime generation."""
 
-        """
-        # Validate that num_primes is divisible by batch_size
+    def __init__(self, init_p: int, num_primes: int, batch_size: int, verbose: bool = False):
         if num_primes % batch_size != 0:
             raise ValueError(f"num_primes ({num_primes}) must be divisible by batch_size ({batch_size})")
-        
+
         self.batch_size = batch_size
         self.num_batches = num_primes // batch_size
-        
-        #Todo: Work backwards to add handling for initial prime == 2/no data case
+        # Single call: 0-indexed position of the first prime to process
+        self.start_idx = int(prime_pi(init_p))
 
-        start_idx = prime_pi(init_p)
-
-        P = Primes()
-
-        start_prime = next_prime(init_p)
-        final_prime = P.unrank(start_idx + num_primes - 1)
-                 
         if verbose:
-            print(f"Verbose: Getting {num_primes} primes from {start_prime} to {final_prime}...")
-        self.p_list = prime_range(start_prime, final_prime + 1)
+            print(f"Start index: {self.start_idx} (prime_pi({init_p}))")
 
-    
     def generate_batches(self):
-        """Generate batches by iterating through batched tuples."""
-        for batch_tuple in batched(self.p_list, self.batch_size):
-            # Convert Array to Python list for worker compatibility
-            batch = list(batch_tuple)
-            yield batch
+        """Yield (start_idx, count) tuples — pure arithmetic, no prime generation."""
+        for i in range(self.num_batches):
+            yield (self.start_idx + i * self.batch_size, self.batch_size)
 
 
 class PPConsumer:
-    """Shared consumer that collects DataFrames and manages batch saves.
+    """Collects DataFrames and flushes to disk incrementally.
 
-    Memory-adaptive: monitors process RSS and flushes early if memory
-    usage exceeds a configurable fraction of available system memory.
+    Each buffered DataFrame is written as its own parquet file on flush,
+    avoiding a concat that would temporarily double memory usage.
     """
 
-    def __init__(self, buffer_size: int, save_callback, memory_pct_limit: float = 0.70):
-        """
-        Args:
-            buffer_size: Number of results to accumulate before saving.
-            save_callback: Function to call for saving data.
-            memory_pct_limit: Flush early if RSS exceeds this fraction of total RAM.
-        """
+    def __init__(self, buffer_size: int, save_callback, memory_pct_limit: float = 0.50):
         self.buffer_size = buffer_size
         self.save_callback = save_callback
         self.memory_pct_limit = memory_pct_limit
-        self.df_buffer = []
+        self.df_buffer: list[pl.DataFrame] = []
         self.result_count = 0
 
     def _memory_pressure(self) -> bool:
-        """Check if we're approaching memory limits."""
         try:
             import psutil
-            mem = psutil.virtual_memory()
-            return mem.percent / 100.0 > self.memory_pct_limit
+            return psutil.virtual_memory().percent / 100.0 > self.memory_pct_limit
         except Exception:
             return False
 
-    def add_results(self, results_df):
+    def add_results(self, results_df: pl.DataFrame):
         if results_df is not None and results_df.height > 0:
             self.df_buffer.append(results_df)
             self.result_count += results_df.height
 
-            while self.result_count >= self.buffer_size or self._memory_pressure():
+            if self.result_count >= self.buffer_size or self._memory_pressure():
                 self._flush_results()
-                if self.result_count == 0:
-                    break
 
     def _flush_results(self):
-        """Flush accumulated DataFrames to storage."""
+        """Write each buffered DataFrame individually (no concat)."""
         if not self.df_buffer:
             return
-
-        combined_df = pl.concat(self.df_buffer)
-        self.save_callback(combined_df, self.buffer_size)
-
+        for df in self.df_buffer:
+            self.save_callback(df)
         self.df_buffer = []
         self.result_count = 0
 
     def finalize(self):
-        """Flush any remaining DataFrames."""
         self._flush_results()
 
-class PPManager:
-    """
-    Stateful manager for prime power partition processing with multi-threaded worker support.
 
-    Maintains state for batch processing, consumer management, and worker pool coordination.
-    """
+class PPManager:
+    """Coordinates parallel prime power partition computation."""
+
     def __init__(self, init_p, num_primes, batch_size, cores, buffer_size, append_data, verbose=False):
-        """Initialize manager with all processing parameters as instance state."""
         self.init_p = init_p or 2
         self.num_primes = num_primes
         self.batch_size = batch_size
@@ -248,98 +171,46 @@ class PPManager:
         self.buffer_size = buffer_size
         self.append_data = append_data
         self.verbose = verbose
-
-        # State tracking - initialized during run_gen
-        self.batch_feeder = None
-        self.consumer = None
-        self.pool = None
         self.batches_processed = 0
         self.primes_processed = 0
 
     def run_gen(self):
-        """
-        Main analysis runner - handles all processing logic using instance state.
-
-        Uses instance variables for all configuration and maintains state tracking
-        for batches_processed, primes_processed, batch_feeder, consumer, and pool.
-        """
         import multiprocessing as mp
         from tqdm import tqdm
 
-        # Create batch feeder and consumer, store as instance state
-        self.batch_feeder = PPBatchFeeder(self.init_p, self.num_primes, self.batch_size, self.verbose)
-        self.consumer = PPConsumer(self.buffer_size, self.append_data)
-
+        feeder = PPBatchFeeder(self.init_p, self.num_primes, self.batch_size, self.verbose)
+        consumer = PPConsumer(self.buffer_size, self.append_data)
 
         print(f"Processing {self.num_primes} primes starting from {self.init_p}")
-        print(f"Batch size: {self.batch_size} primes per worker")
+        print(f"Batch size: {self.batch_size}, workers: {self.cores}")
 
-        # Set spawn method to avoid fork issues
         mp.set_start_method('spawn', force=True)
 
-        ## Initialize timing collection
-        #all_timing_data = []
-
-        # Process with multiprocessing and progress bar
         with mp.Pool(self.cores) as pool:
-            self.pool = pool  # Store pool reference in instance state
             self.batches_processed = 0
             self.primes_processed = 0
 
+            # imap_unordered: all workers busy, results yielded as they complete
+            batches = list(feeder.generate_batches())
             with tqdm(total=self.num_primes, desc="Prime partition", unit="prime") as pbar:
-                for prime_batch in self.batch_feeder.generate_batches():
-                    if not prime_batch:  # Empty batch means we're done
-                        break
+                for results_df in pool.imap_unordered(
+                    _worker_star, batches
+                ):
+                    consumer.add_results(results_df)
 
-                    # Process batch - returns DataFrame
-                    # FIX: Call .get() on AsyncResult to retrieve the actual DataFrame
-                    async_result = pool.apply_async(worker_batch, (prime_batch, self.verbose))
-                    results_df = async_result.get()
-
-
-                    # Collect timing data
-                    #all_timing_data.extend(timing_data)
-
-                    # Pass DataFrame directly to consumer
-                    self.consumer.add_results(results_df)
-
-                    # Update progress
-                    primes_in_batch = len(prime_batch)
-                    self.primes_processed += primes_in_batch
+                    self.primes_processed += self.batch_size
                     self.batches_processed += 1
-                    pbar.update(primes_in_batch)
+                    pbar.update(self.batch_size)
                     pbar.set_postfix({
-                        "Batches": self.batches_processed,
-                        "Batch Size": primes_in_batch,
-                        "Results": results_df.height
+                        "batches": self.batches_processed,
+                        "results": results_df.height,
                     })
 
-        # Finalize any remaining results
-        self.consumer.finalize()
+        consumer.finalize()
 
-        # Process and save timing data
-        #if all_timing_data and self.verbose:
-        #    timing_collector = TimingCollector(verbose=self.verbose)
-        #    timing_collector.timings = all_timing_data
-        #    timing_collector.save_debug_log()
-        #    timing_collector.print_summary()
-
-        print(f"\nCompleted processing {self.primes_processed} primes in {self.batches_processed} batches")
-        print(f"Results merged and saved")
-
-        # Automatically convert run files to blocks if using separate runs
-        convert_runs_to_blocks_auto()
-
-        #if self.verbose and all_timing_data:
-        #    print(f"Timing data collected: {len(all_timing_data)} operations")
+        print(f"\nCompleted {self.primes_processed} primes in {self.batches_processed} batches")
 
     def get_status(self):
-        """
-        Get current processing status.
-
-        Returns:
-            dict: Status dictionary with current state information
-        """
         return {
             'init_p': self.init_p,
             'num_primes': self.num_primes,
@@ -348,18 +219,8 @@ class PPManager:
             'batches_processed': self.batches_processed,
             'primes_processed': self.primes_processed,
             'progress_pct': (self.primes_processed / self.num_primes * 100) if self.num_primes > 0 else 0,
-            'has_batch_feeder': self.batch_feeder is not None,
-            'has_consumer': self.consumer is not None,
-            'has_pool': self.pool is not None
         }
 
     def reset(self):
-        """Reset state for a new run (useful for managing multiple sequential runs)."""
-        self.batch_feeder = None
-        self.consumer = None
-        self.pool = None
         self.batches_processed = 0
         self.primes_processed = 0
-
-
-

@@ -21,6 +21,7 @@ from .utils import get_data_dir
 # ---------------------------------------------------------------------------
 # Pure-Python arithmetic (no SageMath needed for local checks)
 # ---------------------------------------------------------------------------
+#This is a travesty
 
 def _primes_up_to(n: int) -> list[int]:
     """Simple sieve of Eratosthenes."""
@@ -146,7 +147,7 @@ def local_solutions_series(primes: pl.Series, modulus: int) -> pl.Series:
 # ---------------------------------------------------------------------------
 
 def obstruction_depth(p: int, ell: int, max_prec: int = 20,
-                      max_modulus: int = 10000) -> int:
+                      max_modulus: int = 10_000) -> int:
     """Find smallest k such that p = 2^m + q^n has no solution mod ell^k.
 
     Uses successive power-of-ell moduli: ell, ell^2, ..., up to
@@ -270,61 +271,84 @@ def _scan_block(block_path: Path, moduli: list[int],
     return result
 
 
-def scan_obstructions(moduli: Optional[list[int]] = None,
-                      limit: Optional[int] = None,
-                      verbose: bool = False) -> pl.DataFrame:
-    """Scan all blocks for local solvability of obstructed primes.
+def scan_obstructions_summary(
+    moduli: Optional[list[int]] = None,
+    sample_size: int = 500,
+    verbose: bool = False,
+) -> dict:
+    """Scan blocks for local solvability counts (memory-bounded).
 
-    For each obstructed prime, computes whether p = 2^m + q^n has a
-    solution mod each modulus. Primes where local_has_solution is False
-    are *locally obstructed* at that modulus.
+    Batches blocks (50 at a time) and uses vectorised Polars expressions
+    for the modulus membership check instead of Python loops.
 
-    Args:
-        moduli: List of moduli to check. Default: ell^k for small primes.
-        limit: Stop after processing this many obstructed primes.
-        verbose: Print progress per block.
-
-    Returns DataFrame with p and boolean columns per modulus.
+    Returns dict with:
+        total: total obstructed primes scanned
+        per_modulus: {M: count_locally_obstructed}
+        sample_primes: list of up to sample_size primes (for Hensel lifting)
     """
     if moduli is None:
-        # Default: prime powers up to moderate size
         moduli = [3, 4, 5, 7, 8, 9, 11, 13, 16, 25, 27, 49]
 
     data_dir = get_data_dir()
     block_files = sorted(data_dir.joinpath("blocks").glob("pp_b*.parquet"))
     if not block_files:
         print("No block data found.")
-        return pl.DataFrame()
+        return {"total": 0, "per_modulus": {}, "sample_primes": []}
 
-    all_results: list[pl.DataFrame] = []
-    total_primes = 0
+    # Pre-compute achievable residue sets (once, reused across all batches)
+    achieved_sets = {M: achievable_residues(M) for M in moduli}
+    # Convert to sorted lists for Polars is_in()
+    achieved_lists = {M: sorted(achieved_sets[M]) for M in moduli}
 
-    for i, block_path in enumerate(block_files):
+    total = 0
+    per_modulus = {M: 0 for M in moduli}
+    sample_primes: list[int] = []
+
+    BATCH = 50
+    for i in range(0, len(block_files), BATCH):
+        batch = [str(f) for f in block_files[i:i + BATCH]]
         if verbose:
-            print(f"  Block {i + 1}/{len(block_files)}: {block_path.name}",
-                  end="", flush=True)
+            print(f"  Blocks {i + 1}-{min(i + BATCH, len(block_files))}"
+                  f"/{len(block_files)}", flush=True)
 
-        result = _scan_block(block_path, moduli, verbose)
-        if result is not None:
-            all_results.append(result)
-            total_primes += result.height
-            if verbose:
-                print(f" ({result.height} obstructed)")
-        else:
-            if verbose:
-                print(" (no obstructed primes)")
+        # Extract obstructed primes for this batch
+        obstructed = (
+            pl.scan_parquet(batch)
+            .group_by('p')
+            .agg((pl.col('m_k') == 0).all().alias('is_obstructed'))
+            .filter(pl.col('is_obstructed'))
+            .select('p')
+            .collect()
+        )
+        if obstructed.height == 0:
+            continue
 
-        if limit is not None and total_primes >= limit:
-            break
+        total += obstructed.height
 
-    if not all_results:
-        return pl.DataFrame()
+        # Collect sample primes from early batches
+        if len(sample_primes) < sample_size:
+            need = sample_size - len(sample_primes)
+            sample_primes.extend(
+                obstructed['p'].head(need).cast(pl.Int64).to_list()
+            )
 
-    combined = pl.concat(all_results)
-    if limit is not None:
-        combined = combined.head(limit)
+        # Count locally obstructed per modulus (vectorised)
+        count_exprs = [
+            (~(pl.col('p') % M).is_in(achieved_lists[M]))
+            .sum().alias(f'obs_{M}')
+            for M in moduli
+        ]
+        counts = obstructed.select(count_exprs)
+        for M in moduli:
+            per_modulus[M] += int(counts[f'obs_{M}'][0])
 
-    return combined
+        del obstructed
+
+    return {
+        "total": total,
+        "per_modulus": per_modulus,
+        "sample_primes": sample_primes,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -378,47 +402,45 @@ def run_fixed_mod_analysis(limit: Optional[int] = None,
     """Main entry point for fixed-modulus analysis.
 
     Steps:
-      1. Scan blocks for local solvability at various moduli
+      1. Scan blocks for local solvability counts (block by block, no concat)
       2. Compute obstruction depths via Hensel lifting (sample)
       3. CRT combination to find structural obstruction classes
-      4. Report and save results
     """
     data_dir = get_data_dir()
 
     print("=== Fixed-Modulus Ring Analysis ===\n")
 
-    # Step 1: Local solvability scan
+    # Step 1: Local solvability scan (memory-bounded)
     scan_moduli = [3, 4, 5, 7, 8, 9, 11, 13, 16, 25, 27, 49]
     print(f"[1/3] Local solvability scan (moduli: {scan_moduli})...")
 
-    scan_df = scan_obstructions(moduli=scan_moduli, limit=limit, verbose=verbose)
-    if scan_df.height == 0:
+    summary = scan_obstructions_summary(
+        moduli=scan_moduli, sample_size=500, verbose=verbose,
+    )
+    total = summary["total"]
+    if total == 0:
         print("No obstructed primes found.")
         return
 
-    # Report: for each modulus, how many obstructed primes are locally obstructed
-    print(f"\n  {scan_df.height} obstructed primes scanned\n")
+    print(f"\n  {total:,} obstructed primes scanned\n")
     print(f"  {'Modulus':>8}  {'Locally obstructed':>20}  {'Fraction':>10}")
     print("  " + "-" * 44)
     for M in scan_moduli:
-        col = f"sol_mod_{M}"
-        if col in scan_df.columns:
-            n_obstructed = int(scan_df.filter(~pl.col(col)).height)
-            frac = n_obstructed / scan_df.height
-            print(f"  {M:>8}  {n_obstructed:>20}  {frac:>10.4f}")
+        n_obs = summary["per_modulus"].get(M, 0)
+        frac = n_obs / total
+        print(f"  {M:>8}  {n_obs:>20,}  {frac:>10.4f}")
     print()
 
     # Step 2: Hensel lifting on a sample
     lifting_primes = [2, 3, 5, 7, 11, 13]
-    sample_size = min(scan_df.height, 500)
-    sample_primes = scan_df['p'].head(sample_size).to_list()
+    sample_primes = summary["sample_primes"]
+    sample_size = len(sample_primes)
 
     print(f"[2/3] Obstruction depth via Hensel lifting "
           f"(sample={sample_size}, ell in {lifting_primes})...")
     depth_df = depth_analysis(sample_primes, lifting_primes,
                               max_prec=12, verbose=verbose)
 
-    # Report depth distributions
     print(f"\n  Obstruction depth distribution (k where first blocked at ell^k):")
     for ell in lifting_primes:
         col = f"depth_{ell}"
@@ -430,14 +452,7 @@ def run_fixed_mod_analysis(limit: Optional[int] = None,
     print()
 
     # Step 3: CRT combination
-    # Use prime moduli where we see actual obstructions
-    crt_moduli = []
-    for M in scan_moduli:
-        col = f"sol_mod_{M}"
-        if col in scan_df.columns:
-            n_obs = int(scan_df.filter(~pl.col(col)).height)
-            if n_obs > 0:
-                crt_moduli.append(M)
+    crt_moduli = [M for M in scan_moduli if summary["per_modulus"].get(M, 0) > 0]
 
     print(f"[3/3] CRT combination of locally-obstructing moduli: {crt_moduli}...")
     if crt_moduli:
@@ -450,30 +465,17 @@ def run_fixed_mod_analysis(limit: Optional[int] = None,
         if n_classes > 0 and n_classes <= 50:
             print(f"  Classes: {sorted(crt['obstructed_classes'])}")
 
-        # Check how many scanned primes fall in CRT-obstructed classes
+        # CRT membership check on the sample (not the full dataset)
         L = crt['modulus']
         obs_classes = crt['obstructed_classes']
-        structural = scan_df.with_columns(
-            pl.col('p').map_elements(
-                lambda p: (p % L) in obs_classes,
-                return_dtype=pl.Boolean
-            ).alias('crt_obstructed')
-        )
-        n_structural = int(structural.filter(pl.col('crt_obstructed')).height)
-        print(f"  Primes in CRT-obstructed classes: {n_structural}/{scan_df.height} "
-              f"({n_structural / scan_df.height:.4f})")
+        n_structural = sum(1 for p in sample_primes if (p % L) in obs_classes)
+        print(f"  Sample in CRT-obstructed classes: {n_structural}/{sample_size} "
+              f"({n_structural / sample_size:.4f})")
     else:
         print("  No moduli show local obstructions.")
-        crt = None
     print()
 
-    # Save results
+    # Save depth results (the only non-trivial output)
     print("Saving results...")
-    out_dir = _fixed_mod_out_dir()
-
-    scan_df.write_parquet(str(data_dir / "fixed_mod_scan.parquet"))
     depth_df.write_parquet(str(data_dir / "fixed_mod_depths.parquet"))
-
-    print(f"\nResults saved under {data_dir}/")
-    print(f"  fixed_mod_scan.parquet: local solvability per modulus")
-    print(f"  fixed_mod_depths.parquet: Hensel lifting depths")
+    print(f"  {data_dir}/fixed_mod_depths.parquet: Hensel lifting depths")

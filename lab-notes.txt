@@ -1,0 +1,90 @@
+Lab Notes: Prime Power Partition Analysis (funbuns)
+====================================================
+
+This is the permanent research log for the funbuns project.
+Append new findings at the end with dates.
+
+
+2026-03-18  Local-Global Periodicity: q-chains and fixed-modulus obstructions
+-----------------------------------------------------------------------------
+
+Context: p = 2^m + q^n across ~459M primes (up to ~6B).
+
+1. BIPARTITE (n, m) ADJACENCY FOR q=3
+
+   The q=3 chain has 21 distinct n-values and 33 distinct m-values forming
+   a bipartite graph.  All nodes belong to a single connected component --
+   there are no isolated clusters.  This means every solution is reachable
+   from every other by alternating n-steps and m-steps through shared edges.
+
+   Degree distributions: n-degrees (number of m-values per n) vary from ~3
+   to ~15.  m-degrees (number of n-values per m) vary from ~2 to ~12.
+   Higher-degree nodes tend to have smaller m or n values, reflecting the
+   higher prime density for smaller values of 2^m + 3^n.
+
+2. M-PAIR ARITHMETIC PROGRESSIONS
+
+   Among (m1, m2) pairs that share n-values:
+   - d=3 gives the longest AP: m = 1, 4, 7, 10, 13, 16, 19, 22 (length 8).
+   - d=12 APs (e.g., m = 4, 16, 28 sharing n = {1, 4, 12}) have the highest
+     density of shared n-values per pair.
+   - Other frequent deltas: d=1, d=2, d=6.
+
+3. OBSTRUCTION CROSS-LINES
+
+   When 2^m + 3^n is composite (a "gap" in the q=3 chain), the composite
+   value's smallest prime factor follows rigid patterns:
+
+   - q'=5 causes 31.7% of gaps, with n-hits distributed by n mod 4
+     (period = ord_5(3) = 4).
+   - q'=7 causes 16.8% of gaps, with period-6 structure
+     (period = ord_7(3) = 6).
+   - q'=13: the m-values hit are spaced by d=12 = ord_13(2).
+
+4. CONNECTION TO fixed_mod.py: LOCAL OBSTRUCTIONS EXPLAIN GAP PERIODICITY
+
+   The d=12 AP pattern in m-pair sharing and the d=12 spacing in q'=13
+   obstructions are the SAME PHENOMENON.  The multiplicative order ord_{q'}(2)
+   governs the periodicity of 2^m mod q', which determines when two m-values
+   produce the same residue class and thus share the same local solvability.
+
+   More precisely: for each small prime ell (not 2, not q), the values
+   2^m + q^n mod ell depend only on (m mod ord_ell(2), n mod ord_ell(q)).
+   This creates an obstruction grid of size ord_ell(2) x ord_ell(q).
+   Cells where the sum is 0 mod ell are "killed" -- no prime > ell can
+   arise from those (m, n) mod-classes.
+
+   The gap periodicity seen in obstruction cross-lines is exactly this
+   grid structure projected onto the m-axis (or n-axis).
+
+5. OPEN QUESTION: LOCAL-GLOBAL DISCREPANCY
+
+   The sieve density -- the product of (1 - killed/total) across small
+   primes ell -- predicts the fraction of (m, n) pairs surviving all local
+   obstructions.  The empirical density is the fraction that actually yield
+   primes.
+
+   If empirical/sieve converges to a stable ratio as ell_max grows, the
+   gaps are "explained" by local conditions (up to PNT scaling).  If there
+   is a systematic discrepancy or the ratio oscillates, that signals global
+   structure not captured by any finite set of moduli.
+
+   Implemented in data_exploration.py: obstruction_grid_report() and
+   local_global_comparison().  Run via: funbuns --local-global --explore-q 3
+
+
+2026-03-19  Additional Observations
+------------------------------------
+
+6. q=7 MOD-3 OBSTRUCTION (corrected)
+
+   q=7 only appears at even m.  NOT a parity obstruction (2^m + 7^n
+   is always odd).  The actual obstruction is mod 3: since 7 = 1 (mod 3),
+   7^n = 1 (mod 3) for all n.  2^m mod 3 cycles {2, 1, 2, 1, ...}.
+   For odd m: 2^m + 7^n = 2 + 1 = 0 (mod 3), always divisible by 3.
+
+7. q=5 NEVER CHAINS
+
+   q=5 has 0% consecutive hits (cons% = 0) across all m-values.
+   Worth investigating which modulus forbids delta_n = 1 for base 5.
+

@@ -139,3 +139,23 @@ def dominant_exp(expr: pl.Expr) -> pl.Expr:
         args=[expr],
         is_elementwise=True,
     )
+
+
+def full_profile(expr: pl.Expr, filtration_primes: list[int] | None = None) -> pl.Expr:
+    """Full arithmetic profile from a single factorization.
+
+    Returns a Struct column with fields:
+        omega, big_omega, dominant_q, dominant_exp, dominant_share,
+        mu, is_prime_power, v_2, v_3, ... (for each filtration prime)
+
+    Use .struct.unnest() to expand into individual columns.
+    """
+    if filtration_primes is None:
+        filtration_primes = [2, 3, 5, 7, 11, 13]
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="full_profile",
+        args=[expr],
+        is_elementwise=True,
+        kwargs={"filtration_primes": filtration_primes},
+    )

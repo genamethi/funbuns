@@ -21,7 +21,7 @@ from typing import List, Optional, Tuple
 import polars as pl
 
 from .utils import get_data_dir
-from .block_catalog import blocks_dir, list_block_files
+from .block_catalog import blocks_dir, list_block_files, _parse_block_filename
 
 
 def runs_dir() -> Path:
@@ -62,8 +62,30 @@ def integrate_runs_into_blocks(target_prime_count: int = 500_000,
     batch is loaded.
     """
     run_files = _sorted_run_files()
-    existing_blocks = list_block_files()
-    starting_block_idx = len(existing_blocks)
+    existing_blocks = list_block_files()  # sorted by max_prime from filename
+
+    # Use max block number from filenames, not file count
+    # (block numbers may have gaps — e.g., b998 then b1000)
+    if existing_blocks:
+        max_block_num = max(
+            _parse_block_filename(f)[0] or 0 for f in existing_blocks
+        )
+        starting_block_idx = max_block_num
+    else:
+        starting_block_idx = 0
+
+    # Integrity check: verify filename-derived max_p matches actual data
+    if existing_blocks:
+        _, fn_max_p = _parse_block_filename(existing_blocks[-1])
+        actual_max_p = pl.scan_parquet(str(existing_blocks[-1])).select(
+            pl.col("p").max()
+        ).collect().item()
+        if fn_max_p != actual_max_p:
+            raise ValueError(
+                f"Block filename says max_p={fn_max_p} but data has "
+                f"max_p={actual_max_p} in {existing_blocks[-1].name}. "
+                f"Run bmgr --diagnose."
+            )
 
     # Check if there's a partial last block to absorb
     last_block_df = None

@@ -2,9 +2,10 @@
 Utility functions for file handling, OS operations, and I/O.
 """
 
+import json
 import logging
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 import polars as pl
 import tomllib
@@ -132,13 +133,48 @@ class TimingContext:
             self.collector.end_timer(self.timer_id, self.operation, **self.metadata)
 
 
+def get_log_dir() -> Path:
+    """Get the log directory path."""
+    if log_dir := os.getenv('FUNBUNS_LOG_DIR'):
+        p = Path(log_dir)
+    else:
+        try:
+            config = get_config()
+            if log_dir := config.get('log_dir'):
+                p = Path(log_dir)
+            else:
+                p = Path('logs')
+        except Exception:
+            p = Path('logs')
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+class JournalWriter:
+    """Append-only JSONL event logger. One line per event, central journal."""
+
+    def __init__(self, path: Optional[Path] = None):
+        self.path = path or get_log_dir() / "journal.jsonl"
+
+    def log(self, module: str, event: str, **payload):
+        entry = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "module": module,
+            "event": event,
+            **payload,
+        }
+        with open(self.path, "a") as f:
+            f.write(json.dumps(entry, default=str) + "\n")
+
+
 def setup_logging():
     """Set up logging configuration."""
+    log_dir = get_log_dir()
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(levelname)s - %(message)s',
         handlers=[
-            logging.FileHandler('decomp_analysis.log'),
+            logging.FileHandler(log_dir / 'decomp_analysis.log'),
             logging.StreamHandler()
         ]
     )
@@ -189,37 +225,47 @@ def get_config():
 
 
 def resume_p(verbose: bool = False) -> int:
+    """Get the last processed prime from block data.
+
+    Uses max_prime embedded in filenames (pp_b{idx}_p{max_prime}.parquet)
+    to find the highest prime without reading any parquet data.
+
+    Returns the max prime, or None if no block data exists.
     """
-    Get the last processed prime and start_idx from existing parquet data.
-    
-    Args:
-        Verbose...
-    
-    Returns:
-        start_idx - 0 if no data exists
-    """
-    #Really at the moment I don't have the code written to work without initial data.
     try:
+        from .block_catalog import _parse_block_filename
+
         data_dir = get_data_dir()
         block_dir = data_dir / "blocks"
-        block_pattern = str(block_dir / "pp_b*.parquet")
 
-        # Check if any block files exist before scanning
-        if not block_dir.exists() or not any(block_dir.glob("pp_b*.parquet")):
-            if verbose:
-                logging.info("No block parquet files found, starting fresh")
+        if not block_dir.exists():
             return None
 
-        init_p = pl.scan_parquet(block_pattern).select(
-                pl.col("p").max()
-        ).collect().item()
+        block_files = list(block_dir.glob("pp_b*.parquet"))
+        if not block_files:
+            return None
 
-        return init_p
+        # Extract max_prime from each filename, take the global max
+        best_p = 0
+        best_file = None
+        for f in block_files:
+            _, max_prime = _parse_block_filename(f)
+            if max_prime is not None and max_prime > best_p:
+                best_p = max_prime
+                best_file = f
+
+        if best_p == 0:
+            return None
+
+        if verbose:
+            print(f"Resume: max prime {best_p:,} from {best_file.name} "
+                  f"({len(block_files)} blocks)")
+
+        return best_p
 
     except Exception as e:
-        source = "block files"
-        logging.error(f"Error reading parquet {source}: {e}")
-        print(f"\nError: Could not read existing data from {source}")
+        logging.error(f"Error reading block files: {e}")
+        print(f"\nError: Could not read existing block data")
         print("The files may be corrupted or in an invalid format.")
         print("Please run a data check or delete the files to start fresh.")
         raise
@@ -279,43 +325,17 @@ def get_config_file():
 
 
 def get_backup_dir():
-    """Get the backup directory path following configuration hierarchy."""
-    # 1. Try environment variables
-    if backup_dir := os.getenv('FUNBUNS_BACKUP_DIR'):
-        return Path(backup_dir)
-    
-    # 2. Try pyproject.toml configuration
-    try:
-        config = get_config()
-        if backup_dir := config.get('backup_dir'):
-            return Path(backup_dir)
-    except Exception:
-        pass
-    
-    # 3. Fallback to default
-    backup_dir = Path('data/backups')
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    return backup_dir
+    """Get the backup directory (under data_dir)."""
+    d = get_data_dir() / "backups"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def get_temp_dir():
-    """Get the temporary directory path following configuration hierarchy."""
-    # 1. Try environment variables
-    if temp_dir := os.getenv('FUNBUNS_TEMP_DIR'):
-        return Path(temp_dir)
-    
-    # 2. Try pyproject.toml configuration
-    try:
-        config = get_config()
-        if temp_dir := config.get('temp_dir'):
-            return Path(temp_dir)
-    except Exception:
-        pass
-    
-    # 3. Fallback to default
-    temp_dir = Path('data/tmp')
-    temp_dir.mkdir(parents=True, exist_ok=True)
-    return temp_dir
+    """Get the temporary directory (under data_dir)."""
+    d = get_data_dir() / "tmp"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
 
 
 def get_small_primes_table():
@@ -398,8 +418,8 @@ def setup_analysis_mode(args, config):
         # Temporary mode - always monolithic
         data_file = get_temp_data_file()
         init_p = 2
-        append_func = lambda df, buffer_size_arg: append_data(
-            df, buffer_size_arg, data_file, verbose=args.verbose
+        append_func = lambda df: append_data(
+            df, filepath=data_file, verbose=args.verbose
         )
         return init_p, append_func, data_file        
     else:
@@ -426,8 +446,8 @@ def setup_resume_mode(verbose):
         print(f"Resuming from prime {init_p} using separate block files")
 
     
-    append_func = lambda df, buffer_size_arg: append_data(
-        df, buffer_size_arg, verbose=verbose
+    append_func = lambda df: append_data(
+        df, verbose=verbose
     )
     
     return init_p, append_func
