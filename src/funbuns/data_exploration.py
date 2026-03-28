@@ -1261,9 +1261,11 @@ def partition_report(
     p: int = None,
     q: int = None,
     limit: int = 50,
+    max_p: int = None,
 ) -> None:
     """Print partition data via DuckDB.
 
+    - max_p=P: all decompositions for primes <= P, grouped by k
     - p=P: show all decompositions for prime P
     - k=N: list primes with exactly N decompositions
     - k=N, q=Q: same, restricted to base q
@@ -1277,6 +1279,47 @@ def partition_report(
         return
 
     with db:
+        if max_p is not None:
+            df = db.decompositions_up_to(max_p)
+            if df.height == 0:
+                print(f"No primes found up to {max_p}.")
+                return
+
+            n_primes = df["p"].n_unique()
+            k_values = df["k"].unique().sort().to_list()
+
+            print(f"\nAll primes up to {max_p:,}  ({n_primes} primes)\n")
+
+            for kv in k_values:
+                group = df.filter(pl.col("k") == kv)
+                primes_in_group = group["p"].unique().sort().to_list()
+
+                if kv == 0:
+                    print(f"--- k = 0  (obstructed, {len(primes_in_group)} primes) ---")
+                    # Print obstructed primes in compact rows
+                    line = "  "
+                    for i, pv in enumerate(primes_in_group):
+                        entry = f"{pv:,}"
+                        if len(line) + len(entry) + 2 > 80:
+                            print(line)
+                            line = "  "
+                        if line != "  ":
+                            line += ", "
+                        line += entry
+                    if line != "  ":
+                        print(line)
+                else:
+                    print(f"--- k = {kv}  ({len(primes_in_group)} primes) ---")
+                    for pv in primes_in_group:
+                        rows = group.filter(pl.col("p") == pv)
+                        exprs = []
+                        for row in rows.iter_rows(named=True):
+                            if row["q"] is not None:
+                                exprs.append(f"2^{row['m']}+{row['q']}^{row['n']}")
+                        print(f"  {pv:>14,} = {' = '.join(exprs)}")
+                print()
+            return
+
         if p is not None:
             df = db.partitions_for_prime(p)
             if df.height == 0:
@@ -1324,7 +1367,7 @@ def partition_report(
                 print(f"  p = {row['p']:>14,}  =  {row['expr']}")
             return
 
-        print("Usage: --partitions with --partition-k K or --partition-p P")
+        print("Usage: --partitions with --partition-max-p P, --partition-k K, or --partition-p P")
 
 
 def run_exploration(
@@ -1337,10 +1380,13 @@ def run_exploration(
     partition_k: int = None,
     partition_p: int = None,
     partition_limit: int = 50,
+    partition_max_p: int = None,
 ) -> None:
     """Entry point for CLI."""
-    if partitions or partition_k is not None or partition_p is not None:
-        partition_report(k=partition_k, p=partition_p, q=q, limit=partition_limit)
+    if (partitions or partition_k is not None
+            or partition_p is not None or partition_max_p is not None):
+        partition_report(k=partition_k, p=partition_p, q=q,
+                         limit=partition_limit, max_p=partition_max_p)
         return
     if local_global:
         lq = q if q is not None else 3

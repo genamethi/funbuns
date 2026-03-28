@@ -7,6 +7,7 @@ decompositions VIEW over parquet on exFAT (zero copy).
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -14,6 +15,56 @@ import duckdb
 import polars as pl
 
 from .utils import get_data_dir
+
+
+def parse_filter(expr: str, column: str) -> str:
+    """Parse a filter expression into a SQL WHERE clause fragment.
+
+    Patterns:
+        5        -> col = 5           (exact)
+        2*i      -> col % 2 = 0      (multiples)
+        2*i+1    -> col % 2 = 1      (modular)
+        3*i-1    -> col % 3 = 2      (modular, negative offset)
+        3..10    -> col BETWEEN 3 AND 10  (range)
+        3,5,7    -> col IN (3, 5, 7)     (list)
+    """
+    expr = expr.strip()
+
+    # Expand power notation: 10^9 -> 1000000000, 2^5 -> 32
+    expr = re.sub(
+        r'(\d+)\s*\^\s*(\d+)',
+        lambda m: str(int(m.group(1)) ** int(m.group(2))),
+        expr,
+    )
+
+    # Exact integer
+    if re.fullmatch(r'\d+', expr):
+        return f"{column} = {int(expr)}"
+
+    # k*i  or  k*i+c  or  k*i-c
+    m = re.fullmatch(r'(\d+)\s*\*\s*i\s*(?:([+-])\s*(\d+))?', expr)
+    if m:
+        k = int(m.group(1))
+        if k == 0:
+            raise ValueError("Multiplier cannot be 0")
+        if m.group(2) and m.group(3):
+            c = int(m.group(3))
+            if m.group(2) == '-':
+                c = -c
+            return f"{column} % {k} = {c % k}"
+        return f"{column} % {k} = 0"
+
+    # Range: a..b
+    m = re.fullmatch(r'(\d+)\s*\.\.\s*(\d+)', expr)
+    if m:
+        return f"{column} BETWEEN {int(m.group(1))} AND {int(m.group(2))}"
+
+    # List: a,b,c
+    if re.fullmatch(r'\d+(\s*,\s*\d+)+', expr):
+        values = [int(x.strip()) for x in expr.split(',')]
+        return f"{column} IN ({', '.join(str(v) for v in values)})"
+
+    raise ValueError(f"Cannot parse filter: {expr!r}")
 
 
 def get_db_path() -> Path:
@@ -61,6 +112,14 @@ class QueryDB:
                     f"Run `funbuns --build-db` first."
                 )
             self._conn = duckdb.connect(str(self.db_path))
+
+        # Point temp storage to the SSD (630GB free) — the default lands on
+        # /home which can fill up during large parquet scans, causing silent
+        # partial results.
+        temp_dir = get_data_dir() / "duckdb_tmp"
+        temp_dir.mkdir(exist_ok=True)
+        self._conn.execute(f"SET temp_directory = '{temp_dir}'")
+
         return self
 
     def __exit__(self, *exc):
@@ -242,8 +301,7 @@ class QueryDB:
 
         q_filter = f"AND q_k = {q}" if q is not None else ""
         return self._fetch_pl(f"""
-            SELECT p, q_k, n_k,
-                   CAST(LOG2(p - POWER(q_k, n_k)) AS INTEGER) AS m
+            SELECT p, q_k, n_k, m_k AS m
             FROM decompositions
             WHERE p IN (SELECT * FROM unnest({primes}))
               AND q_k > 0
@@ -259,6 +317,205 @@ class QueryDB:
             WHERE p = {p} AND q_k > 0
             ORDER BY q_k, n_k
         """, ["p", "m", "q", "n"])
+
+    # ------------------------------------------------------------------
+    # Web query interface
+    # ------------------------------------------------------------------
+
+    def k_distribution(self) -> list[dict]:
+        """Count of primes per decomposition count k."""
+        rows = self.conn.execute("""
+            SELECT k, COUNT(*) AS count
+            FROM partition_counts
+            GROUP BY k ORDER BY k
+        """).fetchall()
+        return [{"k": int(k), "count": int(c)} for k, c in rows]
+
+    def partitions_query(
+        self,
+        p_min: int = 2,
+        p_max: int | None = None,
+        k_min: int = 0,
+        k_max: int | None = None,
+        q: str | None = None,
+        m: str | None = None,
+        n: str | None = None,
+        page: int = 0,
+        page_size: int = 50,
+        _count_cache: dict | None = None,
+    ) -> dict:
+        """Flexible partition query with filters and pagination.
+
+        q, m, n accept expression strings parsed by parse_filter():
+            "5"  ->  exact match
+            "2*i"  ->  multiples of 2
+            "2*i+1"  ->  odd values
+            "3..10"  ->  range
+            "3,5,7"  ->  set membership
+
+        Two paths: fast (partition_counts only when no m/n/q filters)
+        and filtered (single decompositions scan with COUNT(*) OVER()).
+
+        Returns {"total": int, "page": int, "page_size": int,
+                 "primes": [{"p": int, "k": int,
+                             "decompositions": [{"m": int, "q": int, "n": int}]}]}
+        """
+        p_max_val = p_max if p_max is not None else 999_999_999_999
+        if k_max is not None:
+            k_clause = f"k BETWEEN {k_min} AND {k_max}"
+        else:
+            k_clause = f"k >= {k_min}"
+        offset = page * page_size
+
+        q_clause = f"AND {parse_filter(q, 'd.q_k')}" if q else ""
+        m_clause = f"AND {parse_filter(m, 'd.m_k')}" if m else ""
+        n_clause = f"AND {parse_filter(n, 'd.n_k')}" if n else ""
+        has_decomp_filter = any([q_clause, m_clause, n_clause])
+
+        if not has_decomp_filter:
+            return self._query_fast(p_min, p_max_val, k_clause,
+                                    page, page_size, offset)
+        return self._query_filtered(p_min, p_max_val, k_clause,
+                                    q, m, n,
+                                    q_clause, m_clause, n_clause,
+                                    page, page_size, offset,
+                                    _count_cache)
+
+    def _query_fast(self, p_min, p_max, k_clause,
+                    page, page_size, offset) -> dict:
+        """Fast path: no decomposition filters, use partition_counts only."""
+        total = self.conn.execute(f"""
+            SELECT COUNT(*) FROM partition_counts
+            WHERE {k_clause}
+              AND p BETWEEN {p_min} AND {p_max}
+        """).fetchone()[0]
+
+        page_rows = self.conn.execute(f"""
+            SELECT p, k FROM partition_counts
+            WHERE {k_clause}
+              AND p BETWEEN {p_min} AND {p_max}
+            ORDER BY p
+            LIMIT {page_size} OFFSET {offset}
+        """).fetchall()
+
+        if not page_rows:
+            return {"total": int(total), "page": page,
+                    "page_size": page_size, "primes": []}
+
+        return self._hydrate_page(page_rows, int(total), page, page_size)
+
+    def _query_filtered(self, p_min, p_max, k_clause,
+                        q, m, n,
+                        q_clause, m_clause, n_clause,
+                        page, page_size, offset,
+                        _count_cache) -> dict:
+        """Filtered path: scan decompositions once with COUNT(*) OVER()."""
+        cache_key = (p_min, p_max, k_clause, q, m, n)
+
+        cached_total = (_count_cache or {}).get(cache_key)
+
+        if cached_total is not None:
+            # Cache hit: skip the window function, just paginate
+            page_rows_raw = self.conn.execute(f"""
+                WITH matched AS (
+                    SELECT DISTINCT d.p
+                    FROM decompositions d
+                    JOIN partition_counts pc ON d.p = pc.p
+                    WHERE d.q_k > 0
+                      AND d.p BETWEEN {p_min} AND {p_max}
+                      AND pc.{k_clause}
+                      {q_clause} {m_clause} {n_clause}
+                )
+                SELECT m.p, pc.k
+                FROM matched m
+                JOIN partition_counts pc ON m.p = pc.p
+                ORDER BY m.p
+                LIMIT {page_size} OFFSET {offset}
+            """).fetchall()
+            total = cached_total
+        else:
+            # First hit: use COUNT(*) OVER() to get total in one scan
+            rows = self.conn.execute(f"""
+                WITH matched AS (
+                    SELECT DISTINCT d.p
+                    FROM decompositions d
+                    JOIN partition_counts pc ON d.p = pc.p
+                    WHERE d.q_k > 0
+                      AND d.p BETWEEN {p_min} AND {p_max}
+                      AND pc.{k_clause}
+                      {q_clause} {m_clause} {n_clause}
+                )
+                SELECT m.p, pc.k, COUNT(*) OVER() AS total
+                FROM matched m
+                JOIN partition_counts pc ON m.p = pc.p
+                ORDER BY m.p
+                LIMIT {page_size} OFFSET {offset}
+            """).fetchall()
+
+            if not rows:
+                if _count_cache is not None:
+                    _count_cache[cache_key] = 0
+                return {"total": 0, "page": page,
+                        "page_size": page_size, "primes": []}
+
+            total = int(rows[0][2])
+            if _count_cache is not None:
+                _count_cache[cache_key] = total
+            page_rows_raw = [(r[0], r[1]) for r in rows]
+
+        if not page_rows_raw:
+            return {"total": int(total), "page": page,
+                    "page_size": page_size, "primes": []}
+
+        return self._hydrate_page(page_rows_raw, int(total), page, page_size)
+
+    def _hydrate_page(self, page_rows, total, page, page_size) -> dict:
+        """Fetch decomposition details for a page of (p, k) tuples."""
+        page_primes = [r[0] for r in page_rows]
+        k_by_p = {r[0]: int(r[1]) for r in page_rows}
+
+        decomp_rows = self.conn.execute(f"""
+            SELECT p, m_k, q_k, n_k FROM decompositions
+            WHERE p IN (SELECT * FROM unnest({page_primes})) AND q_k > 0
+            ORDER BY p, q_k, n_k
+        """).fetchall()
+
+        decomps: dict[int, list] = {p: [] for p in page_primes}
+        for dp, dm, dq, dn in decomp_rows:
+            decomps[dp].append({"m": int(dm), "q": int(dq), "n": int(dn)})
+
+        primes = [
+            {"p": int(p), "k": k_by_p[p], "decompositions": decomps[p]}
+            for p in page_primes
+        ]
+        return {"total": total, "page": page,
+                "page_size": page_size, "primes": primes}
+
+    def decompositions_up_to(self, max_p: int) -> pl.DataFrame:
+        """All decompositions for primes up to max_p.
+
+        Returns DataFrame with columns: p, k, m, q, n
+        where k is the decomposition count for that prime.
+        Obstructed primes (k=0) included with null m/q/n.
+        """
+        # Get all primes up to max_p with their k values
+        rows = self.conn.execute(f"""
+            SELECT pc.p, pc.k, d.m_k, d.q_k, d.n_k
+            FROM partition_counts pc
+            LEFT JOIN decompositions d
+              ON pc.p = d.p AND d.q_k > 0
+            WHERE pc.p <= {max_p}
+            ORDER BY pc.k, pc.p, d.q_k, d.n_k
+        """).fetchall()
+
+        if not rows:
+            return pl.DataFrame(schema={"p": pl.Int64, "k": pl.Int64,
+                                        "m": pl.Int64, "q": pl.Int64,
+                                        "n": pl.Int64})
+
+        return pl.DataFrame(rows,
+                            schema=["p", "k", "m", "q", "n"],
+                            orient="row")
 
     # ------------------------------------------------------------------
     # Internal helpers

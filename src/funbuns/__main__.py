@@ -1,5 +1,8 @@
 """
 Main entry point for prime power partition analysis.
+
+Infrastructure commands (database, web server, notebook) live in
+funbuns-admin. Block management lives in bmgr (block_manager.py).
 """
 
 import argparse
@@ -25,102 +28,97 @@ def _check_block_data() -> bool:
 
 
 def main():
-    parser = argparse.ArgumentParser(description='Tools for study prime power partitions p = 2^m + q^n. Resumes from last prime saved in data/blocks.')
-    parser.add_argument('-n', '--num-primes', type=int, required=False,
-                       help='Number of primes to process')
-    parser.add_argument('-b', '--batch-size', type=int, default=10000,
-                       help='Number of primes per worker batch (default: 10000)')
-    parser.add_argument('-p', '--processes', type=int, default=None,
-                       help='Number of worker processes (default: number of physical cores)')
-    parser.add_argument('-t', '--temp', action='store_true',
-                       help='Run analysis in temporary file (for experiments)')
-    parser.add_argument('--data-file', type=str, default=None,
-                       help='Specify non-default data location')
-    #TODO: Move this functionality into the bgmr
-    parser.add_argument('--show-runs', action='store_true',
-                       help='Show summary of all block files')
+    parser = argparse.ArgumentParser(
+        description='Prime power partition analysis: p = 2^m + q^n.\n'
+                    'Resumes from last prime saved in data/blocks.\n\n'
+                    'Infrastructure: use funbuns-admin (db, serve, notebook).\n'
+                    'Block management: use bmgr (pixi run bmgr).',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
 
-    #TODO: Re-implement this with VegaFusion
-    parser.add_argument('--view', action='store_true',
-                       help='Generate web-based reports using Altair')
+    # --- Generation ---
+    gen = parser.add_argument_group('generation', 'Compute new prime partitions')
+    gen.add_argument('-n', '--num-primes', type=int, required=False,
+                     help='Number of primes to process')
+    gen.add_argument('-b', '--batch-size', type=int, default=10000,
+                     help='Number of primes per worker batch (default: 10000)')
+    gen.add_argument('-p', '--processes', type=int, default=None,
+                     help='Number of worker processes (default: physical cores)')
+    gen.add_argument('-t', '--temp', action='store_true',
+                     help='Run analysis in temporary file (for experiments)')
+    gen.add_argument('--data-file', type=str, default=None,
+                     help='Specify non-default data location')
+    gen.add_argument('-i', '--init', type=int, default=None, metavar='P',
+                     help='Override resume prime (start generation from prime P)')
+    gen.add_argument('-g', '--genpp', type=int, metavar='N',
+                     help='Prepare prime powers data for first N primes (p^1 through p^100)')
+
+    # --- Cohomological / algebraic analysis ---
+    cohom = parser.add_argument_group('cohomological analysis',
+                                      'Local-global, l-adic, spectral, fixed-mod')
+    cohom.add_argument('--ladic', action='store_true',
+                       help='Run l-adic Diophantine analysis on obstructed primes')
+    cohom.add_argument('--ladic-limit', type=int, default=None, metavar='N',
+                       help='Limit l-adic analysis to first N obstructed primes (implies --ladic)')
+    cohom.add_argument('--ladic-gap', type=int, default=None, metavar='P',
+                       help='Deep gap-filling analysis for a single prime P')
+    cohom.add_argument('--spectral', action='store_true',
+                       help='Run spectral/harmonic analysis on obstruction indicator')
+    cohom.add_argument('--clocks', type=int, default=None, metavar='N',
+                       help='Run prime clock superposition analysis with first N primes')
+    cohom.add_argument('--fixed-mod', action='store_true',
+                       help='Run fixed-modulus ring analysis (local obstructions, Hensel lifting, CRT)')
+    cohom.add_argument('--fixed-mod-limit', type=int, default=None, metavar='N',
+                       help='Limit fixed-mod analysis to first N obstructed primes (implies --fixed-mod)')
+
+    # --- Remainder / Zipf profiling ---
+    prof = parser.add_argument_group('profiling', 'Remainder profiling, Zipf analysis')
+    prof.add_argument('--remainder', action='store_true',
+                      help='Run incremental remainder profiling (omega, near-misses, filtration)')
+    prof.add_argument('--remainder-limit', type=int, default=None, metavar='N',
+                      help='Limit remainder analysis to N new obstructed primes (implies --remainder)')
+    prof.add_argument('--zipf', action='store_true',
+                      help='Run bounded-memory Zipf/Mandelbrot analysis on q_k frequencies')
+    prof.add_argument('--zipf-qmax', type=int, default=1_000_000, metavar='Q',
+                      help='Max q value to track individually (default: 1000000)')
+
+    # --- Visualization / exploration ---
+    viz = parser.add_argument_group('exploration', 'Visualization, Baker circle, data exploration')
+    viz.add_argument('--baker-circle', type=int, default=None, metavar='P',
+                     help='Generate Baker circle visualization for prime P (archimedean H^1)')
+    viz.add_argument('--explore', action='store_true',
+                     help='Explore recurrence structure in (q, m) strata')
+    viz.add_argument('--explore-q', type=int, default=None, metavar='Q',
+                     help='Fix q for exploration (default: sweep {3,5,7,11,13})')
+    viz.add_argument('--explore-m', type=int, default=None, metavar='M',
+                     help='Fix m for exploration (default: sweep)')
+    viz.add_argument('--tree', action='store_true',
+                     help='Show tree view: n-fiber branching over m (requires --explore-q)')
+    viz.add_argument('--local-global', action='store_true',
+                     help='Run local-global sieve analysis (implies --explore, default q=3)')
+    viz.add_argument('--view', action='store_true',
+                     help='Generate web-based dashboard using Altair')
+
+    # --- Partition queries ---
+    pq = parser.add_argument_group('partition queries', 'Query primes by decomposition count')
+    pq.add_argument('--partitions', action='store_true',
+                    help='Query primes by decomposition count')
+    pq.add_argument('--partition-k', type=int, default=None, metavar='K',
+                    help='Show primes with exactly K decompositions')
+    pq.add_argument('--partition-p', type=int, default=None, metavar='P',
+                    help='Show all decompositions for prime P')
+    pq.add_argument('--partition-limit', type=int, default=50, metavar='N',
+                    help='Max primes to show (default: 50)')
+    pq.add_argument('--partition-max-p', type=int, default=None, metavar='P',
+                    help='Show all decompositions for primes up to P, grouped by k')
+
+    # --- Verbosity ---
     #TODO: Implement debug mode and keep this as level 1 verbosity (level 0 is default)
     parser.add_argument('-v', '--verbose', action='store_true',
-                       help='Enable verbose output for debugging and profiling')
+                        help='Enable verbose output for debugging and profiling')
     #TODO: Implement this as level 2 verbosity
     parser.add_argument('-d', '-vv', '--debug', action='store_true',
                         help='More verbose with profiling of memory usage and timing data.')
-
-    parser.add_argument('-i', '--init', type=int, default=None, metavar='P',
-                       help='Override resume prime for gap-filling (start generation from prime P)')
-
-    parser.add_argument('-g', '--genpp', type=int, metavar='N',
-                       help='Prepare prime powers data for first N primes (p^1 through p^100)')
-
-    # ℓ-adic analysis
-    parser.add_argument('--ladic', action='store_true',
-                       help='Run ℓ-adic Diophantine analysis on obstructed primes')
-    parser.add_argument('--ladic-limit', type=int, default=None, metavar='N',
-                       help='Limit ℓ-adic analysis to first N obstructed primes (implies --ladic)')
-    parser.add_argument('--ladic-gap', type=int, default=None, metavar='P',
-                       help='Deep gap-filling analysis for a single prime P')
-
-    # Spectral analysis
-    parser.add_argument('--spectral', action='store_true',
-                       help='Run spectral/harmonic analysis on obstruction indicator')
-    parser.add_argument('--clocks', type=int, default=None, metavar='N',
-                       help='Run prime clock superposition analysis with first N primes')
-
-    # Fixed-modulus analysis
-    parser.add_argument('--fixed-mod', action='store_true',
-                       help='Run fixed-modulus ring analysis (local obstructions, Hensel lifting, CRT)')
-    parser.add_argument('--fixed-mod-limit', type=int, default=None, metavar='N',
-                       help='Limit fixed-mod analysis to first N obstructed primes (implies --fixed-mod)')
-
-    # Remainder profiling (incremental)
-    parser.add_argument('--remainder', action='store_true',
-                       help='Run incremental remainder profiling (omega, near-misses, filtration)')
-    parser.add_argument('--remainder-limit', type=int, default=None, metavar='N',
-                       help='Limit remainder analysis to N new obstructed primes (implies --remainder)')
-
-    # Zipf analysis
-    parser.add_argument('--zipf', action='store_true',
-                       help='Run bounded-memory Zipf/Mandelbrot analysis on q_k frequencies')
-    parser.add_argument('--zipf-qmax', type=int, default=1_000_000, metavar='Q',
-                       help='Max q value to track individually (default: 1000000)')
-
-    # Baker circle visualization
-    parser.add_argument('--baker-circle', type=int, default=None, metavar='P',
-                       help='Generate Baker circle visualization for prime P (archimedean H^1)')
-
-    # Data exploration (recurrence structure)
-    parser.add_argument('--explore', action='store_true',
-                       help='Explore recurrence structure in (q, m) strata')
-    parser.add_argument('--explore-q', type=int, default=None, metavar='Q',
-                       help='Fix q for exploration (default: sweep {3,5,7,11,13})')
-    parser.add_argument('--explore-m', type=int, default=None, metavar='M',
-                       help='Fix m for exploration (default: sweep)')
-    parser.add_argument('--tree', action='store_true',
-                       help='Show tree view: n-fiber branching over m (requires --explore-q)')
-    parser.add_argument('--local-global', action='store_true',
-                       help='Run local-global sieve analysis (implies --explore, default q=3)')
-
-    # Partition queries
-    parser.add_argument('--partitions', action='store_true',
-                       help='Query primes by decomposition count')
-    parser.add_argument('--partition-k', type=int, default=None, metavar='K',
-                       help='Show primes with exactly K decompositions')
-    parser.add_argument('--partition-p', type=int, default=None, metavar='P',
-                       help='Show all decompositions for prime P')
-    parser.add_argument('--partition-limit', type=int, default=50, metavar='N',
-                       help='Max primes to show (default: 50)')
-
-    # Database management
-    parser.add_argument('--build-db', action='store_true',
-                       help='Build DuckDB index from parquet (one-time, ~10-30 min)')
-    parser.add_argument('--sync-db', action='store_true',
-                       help='Sync DuckDB with new parquet blocks')
-    parser.add_argument('--db-status', action='store_true',
-                       help='Show database status')
 
     args = parser.parse_args()
 
@@ -142,8 +140,6 @@ def main():
         analysis_modes.append('view')
     if args.genpp:
         analysis_modes.append('genpp')
-    if args.show_runs:
-        analysis_modes.append('show_runs')
     if args.ladic:
         analysis_modes.append('ladic')
     if args.ladic_gap is not None:
@@ -162,7 +158,8 @@ def main():
         analysis_modes.append('baker_circle')
     if (args.explore or args.explore_q is not None or args.explore_m is not None
             or args.tree or args.local_global
-            or args.partitions or args.partition_k is not None or args.partition_p is not None):
+            or args.partitions or args.partition_k is not None
+            or args.partition_p is not None or args.partition_max_p is not None):
         analysis_modes.append('explore')
 
     # Warn about ignored flags when using special modes
@@ -189,12 +186,6 @@ def main():
     # Handle prep mode
     if args.genpp:
         prepare_prime_powers(args.genpp)
-        return
-
-    # Handle show-runs mode
-    if args.show_runs:
-        from .utils import show_run_files_summary
-        show_run_files_summary()
         return
 
     # Handle gap-filling (standalone, doesn't need block data check for arbitrary primes)
@@ -276,29 +267,8 @@ def main():
                         partitions=args.partitions,
                         partition_k=args.partition_k,
                         partition_p=args.partition_p,
-                        partition_limit=args.partition_limit)
-        ran_analysis = True
-
-    # Database management
-    if args.build_db:
-        from .querydb import QueryDB
-        db = QueryDB(read_only=False)
-        with db:
-            db.build()
-        ran_analysis = True
-
-    if args.sync_db:
-        from .querydb import QueryDB
-        db = QueryDB(read_only=False)
-        with db:
-            db.sync()
-        ran_analysis = True
-
-    if args.db_status:
-        from .querydb import QueryDB
-        db = QueryDB(read_only=True)
-        with db:
-            db.status()
+                        partition_limit=args.partition_limit,
+                        partition_max_p=args.partition_max_p)
         ran_analysis = True
 
     if ran_analysis:
@@ -306,7 +276,10 @@ def main():
 
     # Default mode: prime generation (requires -n)
     if args.num_primes is None:
-        parser.error("-n/--num-primes is required when not using --view, --genpp, --ladic, --spectral, --clocks, --fixed-mod, --remainder, --zipf, or --baker-circle")
+        parser.print_help()
+        print("\nInfrastructure commands: funbuns-admin db|serve|notebook")
+        print("Block management: pixi run bmgr")
+        return
 
     # Determine number of workers
     if args.processes is not None:

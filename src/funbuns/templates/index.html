@@ -1,0 +1,470 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>funbuns partition browser</title>
+<style>
+:root {
+  --bg: #1a1a2e;
+  --surface: #16213e;
+  --border: #0f3460;
+  --text: #e0e0e0;
+  --muted: #888;
+  --accent: #e94560;
+  --accent2: #53a8b6;
+  --mono: "Consolas", "DejaVu Sans Mono", "Courier New", monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--mono);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.layout {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 100vh;
+}
+/* Sidebar */
+.sidebar {
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  padding: 16px;
+  overflow-y: auto;
+}
+.sidebar h2 { font-size: 14px; margin-bottom: 12px; color: var(--accent); }
+.k-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.k-table th, .k-table td {
+  text-align: right;
+  padding: 2px 6px;
+  border-bottom: 1px solid var(--border);
+}
+.k-table th { color: var(--muted); }
+.k-table tr:hover { background: var(--border); cursor: pointer; }
+.k-table .selected { background: var(--border); color: var(--accent2); }
+
+/* Main content */
+.main { padding: 16px 24px; overflow-x: auto; }
+h1 { font-size: 18px; margin-bottom: 16px; color: var(--accent); }
+
+/* Filter panel */
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 16px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.filter-group { display: flex; flex-direction: column; gap: 2px; }
+.filter-group label { font-size: 11px; color: var(--muted); text-transform: uppercase; }
+.filter-group input {
+  width: 100px;
+  padding: 4px 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  border-radius: 3px;
+}
+.filter-group input:focus { outline: none; border-color: var(--accent2); }
+.filter-group input::placeholder { color: #555; }
+.filter-group.narrow input { width: 70px; }
+button {
+  padding: 6px 16px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-family: var(--mono);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: 3px;
+}
+button:hover { opacity: 0.85; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+button.secondary {
+  background: var(--border);
+  color: var(--text);
+}
+
+/* Status */
+.status {
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.status .count { color: var(--accent2); }
+.status .timing { color: var(--muted); font-style: italic; }
+
+/* Results table */
+.results-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.results-table th {
+  text-align: left;
+  padding: 6px 10px;
+  border-bottom: 2px solid var(--border);
+  color: var(--muted);
+  font-size: 11px;
+  text-transform: uppercase;
+}
+.results-table td {
+  padding: 5px 10px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.results-table tr:hover { background: rgba(83, 168, 182, 0.05); }
+.results-table .p-val {
+  color: var(--accent2);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-style: dotted;
+}
+.results-table .p-val:hover { color: var(--accent); }
+.decomp { white-space: nowrap; }
+.decomp + .decomp::before { content: " = "; color: var(--muted); }
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 12px;
+  font-size: 12px;
+}
+.pagination .page-info { color: var(--muted); }
+
+/* Detail modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.6);
+  z-index: 100;
+  justify-content: center;
+  align-items: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px;
+  min-width: 320px;
+  max-width: 600px;
+  max-height: 80vh;
+  overflow-y: auto;
+}
+.modal h3 { color: var(--accent); margin-bottom: 12px; }
+.modal .close-btn {
+  float: right;
+  background: none;
+  color: var(--muted);
+  font-size: 18px;
+  padding: 0 6px;
+}
+.modal table { width: 100%; }
+.modal td, .modal th { padding: 4px 8px; text-align: left; }
+
+/* Loading */
+.spinner {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent2);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="layout">
+
+<!-- Sidebar: k distribution -->
+<div class="sidebar">
+  <h2>k distribution</h2>
+  <table class="k-table" id="k-dist">
+    <thead><tr><th>%</th><th>k</th><th>primes</th></tr></thead>
+    <tbody id="k-dist-body"></tbody>
+  </table>
+</div>
+
+<!-- Main content -->
+<div class="main">
+  <h1>p = 2<sup>m</sup> + q<sup>n</sup> partition browser</h1>
+
+  <div class="filters">
+    <div class="filter-group">
+      <label>p min</label>
+      <input type="text" id="f-p-min" placeholder="2">
+    </div>
+    <div class="filter-group">
+      <label>p max</label>
+      <input type="text" id="f-p-max" placeholder="no limit">
+    </div>
+    <div class="filter-group narrow">
+      <label>k min</label>
+      <input type="text" id="f-k-min" placeholder="0">
+    </div>
+    <div class="filter-group narrow">
+      <label>k max</label>
+      <input type="text" id="f-k-max" placeholder="no limit">
+    </div>
+    <div class="filter-group">
+      <label>q</label>
+      <input type="text" id="f-q" placeholder="3  2*i+1  3,5,7">
+    </div>
+    <div class="filter-group">
+      <label>m</label>
+      <input type="text" id="f-m" placeholder="5  2*i  1..10">
+    </div>
+    <div class="filter-group">
+      <label>n</label>
+      <input type="text" id="f-n" placeholder="2*i  1  3..8">
+    </div>
+    <div class="filter-group narrow">
+      <label>per page</label>
+      <input type="text" id="f-page-size" value="50">
+    </div>
+    <button id="btn-search" onclick="search(0)">Search</button>
+    <button class="secondary" onclick="clearFilters()">Clear</button>
+  </div>
+
+  <div class="status" id="status"></div>
+
+  <table class="results-table">
+    <thead>
+      <tr>
+        <th>p</th>
+        <th>k</th>
+        <th>decompositions</th>
+      </tr>
+    </thead>
+    <tbody id="results"></tbody>
+  </table>
+
+  <div class="pagination" id="pagination"></div>
+</div>
+</div>
+
+<!-- Detail modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal" id="modal">
+    <button class="close-btn" onclick="document.getElementById('modal-overlay').classList.remove('open')">&times;</button>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<script>
+let currentPage = 0;
+
+function parseNum(s) {
+  // Support expressions like 10^9, 2^32, 10^6*5 (= 5000000)
+  s = s.replace(/\s+/g, '');
+  // a^b or a**b
+  let m = s.match(/^(\d+)[\^*]{1,2}(\d+)(?:\*(\d+))?$/);
+  if (m) {
+    let val = Math.pow(parseInt(m[1],10), parseInt(m[2],10));
+    if (m[3]) val *= parseInt(m[3], 10);
+    return Math.round(val);
+  }
+  // plain integer
+  const n = parseInt(s, 10);
+  return isNaN(n) ? null : n;
+}
+
+function intOrNull(id) {
+  const v = document.getElementById(id).value.trim();
+  if (v === '') return null;
+  return parseNum(v);
+}
+
+function strOrNull(id) {
+  const v = document.getElementById(id).value.trim();
+  return v === '' ? null : v;
+}
+
+function buildParams(page) {
+  const params = new URLSearchParams();
+  const pMin = intOrNull('f-p-min');
+  const pMax = intOrNull('f-p-max');
+  const kMin = intOrNull('f-k-min');
+  const kMax = intOrNull('f-k-max');
+  const q = strOrNull('f-q');
+  const m = strOrNull('f-m');
+  const n = strOrNull('f-n');
+  const pageSize = intOrNull('f-page-size') || 50;
+
+  if (pMin !== null) params.set('p_min', pMin);
+  if (pMax !== null) params.set('p_max', pMax);
+  if (kMin !== null) params.set('k_min', kMin);
+  if (kMax !== null) params.set('k_max', kMax);
+  if (q !== null) params.set('q', q);
+  if (m !== null) params.set('m', m);
+  if (n !== null) params.set('n', n);
+  params.set('page', page);
+  params.set('page_size', pageSize);
+  return params;
+}
+
+async function search(page) {
+  currentPage = page;
+  const btn = document.getElementById('btn-search');
+  const status = document.getElementById('status');
+  const results = document.getElementById('results');
+  const pagination = document.getElementById('pagination');
+
+  btn.disabled = true;
+  status.innerHTML = '<span class="spinner"></span> Querying...';
+  results.innerHTML = '';
+  pagination.innerHTML = '';
+
+  const t0 = performance.now();
+  try {
+    const params = buildParams(page);
+    const resp = await fetch('/api/partitions?' + params.toString());
+    if (!resp.ok) {
+      const body = await resp.json().catch(() => null);
+      throw new Error(body?.error || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+
+    const totalPages = Math.ceil(data.total / data.page_size);
+    status.innerHTML =
+      `<span class="count">${data.total.toLocaleString()}</span> primes matched` +
+      ` &mdash; page ${data.page + 1} of ${totalPages}` +
+      ` <span class="timing">(${elapsed}s)</span>`;
+
+    if (data.primes.length === 0) {
+      results.innerHTML = '<tr><td colspan="3" style="color:var(--muted)">No results</td></tr>';
+    } else {
+      results.innerHTML = data.primes.map(renderRow).join('');
+    }
+
+    renderPagination(data.page, totalPages, data.total);
+  } catch (e) {
+    status.innerHTML = '<span style="color:var(--accent)">Error: ' + e.message + '</span>';
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderRow(prime) {
+  const decomps = prime.decompositions.map(d =>
+    `<span class="decomp">2<sup>${d.m}</sup>+${d.q}<sup>${d.n}</sup></span>`
+  ).join('');
+  return `<tr>
+    <td><span class="p-val" onclick="showPrime(${prime.p})">${prime.p.toLocaleString()}</span></td>
+    <td>${prime.k}</td>
+    <td>${decomps}</td>
+  </tr>`;
+}
+
+function renderPagination(page, totalPages, total) {
+  const pagination = document.getElementById('pagination');
+  if (totalPages <= 1) { pagination.innerHTML = ''; return; }
+
+  let html = '';
+  if (page > 0)
+    html += `<button class="secondary" onclick="search(${page - 1})">Prev</button>`;
+  if (page > 1)
+    html += `<button class="secondary" onclick="search(0)">First</button>`;
+
+  html += `<span class="page-info">page ${page + 1} / ${totalPages.toLocaleString()}</span>`;
+
+  if (page < totalPages - 1)
+    html += `<button class="secondary" onclick="search(${page + 1})">Next</button>`;
+  if (page < totalPages - 2)
+    html += `<button class="secondary" onclick="search(${totalPages - 1})">Last</button>`;
+
+  pagination.innerHTML = html;
+}
+
+async function showPrime(p) {
+  const modal = document.getElementById('modal-overlay');
+  const content = document.getElementById('modal-content');
+  content.innerHTML = '<span class="spinner"></span> Loading...';
+  modal.classList.add('open');
+
+  try {
+    const resp = await fetch(`/api/prime/${p}`);
+    const data = await resp.json();
+    let html = `<h3>p = ${p.toLocaleString()}</h3>`;
+    html += `<p style="color:var(--muted);margin-bottom:8px">${data.k} decomposition${data.k !== 1 ? 's' : ''}</p>`;
+    html += '<table>';
+    html += '<tr><th>m</th><th>q</th><th>n</th><th>expression</th></tr>';
+    for (const d of data.decompositions) {
+      html += `<tr><td>${d.m}</td><td>${d.q}</td><td>${d.n}</td>`;
+      html += `<td>2<sup>${d.m}</sup> + ${d.q}<sup>${d.n}</sup></td></tr>`;
+    }
+    html += '</table>';
+    content.innerHTML = html;
+  } catch (e) {
+    content.innerHTML = '<span style="color:var(--accent)">Error: ' + e.message + '</span>';
+  }
+}
+
+function closeModal(e) {
+  if (e.target === document.getElementById('modal-overlay'))
+    e.target.classList.remove('open');
+}
+
+function clearFilters() {
+  for (const id of ['f-p-min','f-p-max','f-k-min','f-k-max','f-q','f-m','f-n'])
+    document.getElementById(id).value = '';
+  document.getElementById('f-page-size').value = '50';
+  document.getElementById('status').innerHTML = '';
+  document.getElementById('results').innerHTML = '';
+  document.getElementById('pagination').innerHTML = '';
+  // Clear any selected k row
+  document.querySelectorAll('.k-table .selected').forEach(r => r.classList.remove('selected'));
+}
+
+// k-distribution sidebar
+async function loadStats() {
+  try {
+    const resp = await fetch('/api/stats');
+    const data = await resp.json();
+    const tbody = document.getElementById('k-dist-body');
+    const total = data.reduce((s, row) => s + row.count, 0);
+    tbody.innerHTML = data.map(row => {
+      const pct = (row.count / total * 100).toFixed(1);
+      return `<tr onclick="filterByK(${row.k}, this)"><td>${pct}</td><td>${row.k}</td><td>${row.count.toLocaleString()}</td></tr>`;
+    }).join('');
+  } catch (e) {
+    document.getElementById('k-dist-body').innerHTML =
+      '<tr><td colspan="3" style="color:var(--accent)">failed to load</td></tr>';
+  }
+}
+
+function filterByK(k, el) {
+  document.querySelectorAll('.k-table .selected').forEach(r => r.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('f-k-min').value = k;
+  document.getElementById('f-k-max').value = k;
+  search(0);
+}
+
+// Enter key triggers search
+document.querySelectorAll('.filters input').forEach(input => {
+  input.addEventListener('keydown', e => { if (e.key === 'Enter') search(0); });
+});
+
+// Load stats on page load
+loadStats();
+</script>
+</body>
+</html>

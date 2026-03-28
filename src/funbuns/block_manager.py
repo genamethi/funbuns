@@ -105,92 +105,58 @@ class BlockManager:
         return analysis
 
     def show_block_summary(self, use_blocks: bool = True):
-        """Show partition summary using glob patterns."""
+        """Show partition summary. Uses DuckDB when available, else lightweight Polars."""
         print("Block Summary")
 
         if use_blocks:
-            pattern = str(self.blocks_dir / "*.parquet")
             files = list(self.blocks_dir.glob("*.parquet"))
         else:
-            pattern = str(self.runs_dir / "*.parquet")
             files = list(self.runs_dir.glob("*.parquet"))
 
         if not files:
-            print(f"  No files found matching {pattern}")
+            print(f"  No parquet files found.")
             return
 
-        print(f"  Found {len(files)} files")
+        print(f"  Found {len(files)} block files")
 
+        # Try DuckDB first (fast, already indexed)
+        try:
+            from .querydb import QueryDB
+            db = QueryDB(read_only=True)
+            with db:
+                db.status()
+            return
+        except Exception:
+            pass
+
+        # Fallback: lightweight Polars scan (no n_unique — OOMs on 1B+ rows)
+        pattern = str((self.blocks_dir if use_blocks else self.runs_dir) / "*.parquet")
         try:
             stats = pl.scan_parquet(pattern).select([
                 pl.len().alias("total_rows"),
                 pl.col("p").min().alias("min_prime"),
                 pl.col("p").max().alias("max_prime"),
-                pl.col("p").n_unique().alias("unique_primes")
             ]).collect()
 
-            total_rows = stats["total_rows"].item()
-            min_prime = stats["min_prime"].item()
-            max_prime = stats["max_prime"].item()
-            unique_primes = stats["unique_primes"].item()
-
-            print(f"  Total: {total_rows:,} rows, {unique_primes:,} unique primes")
-            print(f"  Range: {min_prime:,} to {max_prime:,}")
-
-            # Partition frequency analysis using batched processing
-            print("  Partition frequency distribution:")
-
-            batch_size = 50
-            all_partition_counts = {}
-
-            for i in range(0, len(files), batch_size):
-                batch_files = files[i:i+batch_size]
-                batch_pattern = [str(f) for f in batch_files]
-
-                try:
-                    batch_partition_counts = pl.scan_parquet(batch_pattern).group_by("p").agg([
-                        (pl.col("q_k") > 0).sum().alias("actual_partitions")
-                    ]).group_by("actual_partitions").agg([
-                        pl.len().alias("prime_count")
-                    ]).collect()
-
-                    for row in batch_partition_counts.iter_rows(named=True):
-                        pc = row["actual_partitions"]
-                        count = row["prime_count"]
-                        all_partition_counts[pc] = all_partition_counts.get(pc, 0) + count
-
-                except Exception as e:
-                    print(f"    Warning: Error processing batch {i//batch_size + 1}: {e}")
-                    continue
-
-            for pc in sorted(all_partition_counts.keys()):
-                prime_count = all_partition_counts[pc]
-                percentage = (prime_count / unique_primes) * 100
-                print(f"    {pc:3d} partitions: {prime_count:,} primes ({percentage:.1f}%)")
-
+            print(f"  Total rows: {stats['total_rows'].item():,}")
+            print(f"  Prime range: {stats['min_prime'].item():,} to {stats['max_prime'].item():,}")
+            print("\n  (Run `funbuns --build-db` for full k-distribution summary)")
         except Exception as e:
             print(f"  Error analyzing files: {e}")
 
-        # Show individual block info
-        print(f"\n  Individual block details:")
+        # Show a few individual blocks
+        print(f"\n  First 10 blocks:")
         for file in sorted(files)[:10]:
             try:
                 file_stats = pl.scan_parquet(file).select([
                     pl.len().alias("rows"),
                     pl.col("p").min().alias("min_p"),
                     pl.col("p").max().alias("max_p"),
-                    pl.col("p").n_unique().alias("primes")
                 ]).collect()
-
-                rows = file_stats["rows"].item()
-                min_p = file_stats["min_p"].item()
-                max_p = file_stats["max_p"].item()
-                primes = file_stats["primes"].item()
-
-                print(f"    {file.name}: {rows:,} rows, {primes:,} primes ({min_p:,} to {max_p:,})")
-
+                print(f"    {file.name}: {file_stats['rows'].item():,} rows "
+                      f"({file_stats['min_p'].item():,} to {file_stats['max_p'].item():,})")
             except Exception as e:
-                print(f"    {file.name}: Error reading ({e})")
+                print(f"    {file.name}: Error ({e})")
 
         if len(files) > 10:
             print(f"    ... and {len(files) - 10} more files")
@@ -343,6 +309,7 @@ def main():
     parser.add_argument("--analyze", action="store_true", help="Analyze current organization")
     parser.add_argument("--convert", action="store_true", help="Convert runs to blocks")
     parser.add_argument("--summary", action="store_true", help="Show block summary")
+    parser.add_argument("--show-runs", action="store_true", help="Show summary of all run files")
     parser.add_argument("--reconfigure", type=int, metavar="PRIMES", help="Reconfigure to N primes per block")
     parser.add_argument("--block-size", type=int, default=500_000, help="Target primes per block (default: 500,000)")
     parser.add_argument("--dry-run", action="store_true", help="Show what would happen without making changes")
@@ -382,6 +349,11 @@ def main():
         block_files = list(manager.blocks_dir.glob("*.parquet"))
         use_blocks = len(block_files) > 0
         manager.show_block_summary(use_blocks=use_blocks)
+        ran_action = True
+
+    if args.show_runs:
+        from .utils import show_run_files_summary
+        show_run_files_summary()
         ran_action = True
 
     if args.reconfigure:

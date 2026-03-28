@@ -22,6 +22,7 @@ setup(
     entry_points={
         "console_scripts": [
             "funbuns=funbuns.__main__:main",
+            "funbuns-admin=funbuns.admin:main",
         ],
     },
     classifiers=[

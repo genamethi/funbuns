@@ -3,15 +3,34 @@ authors = ["Eric Page <genamthi@gmail.com>"]
 channels = ["conda-forge"]
 name = "funbuns"
 platforms = ["linux-64"]
-version = "0.1.1"
+version = "1.0.0"
 
 [tasks]
-serve = "python -m http.server 8000 -d data"
+# Infrastructure (funbuns-admin)
+serve = "funbuns-admin serve"
+notebook = "funbuns-admin notebook"
+build-db = "funbuns-admin db build"
+sync-db = "funbuns-admin db sync"
+db-status = "funbuns-admin db status"
+
+# Block management (bmgr)
 bmgr = "python -m funbuns.block_manager"
 bmgr-integrate = "python -m funbuns.block_manager --integrate-check"
 bmgr-integrity = "python -m funbuns.block_manager --integrity"
+bmgr-diagnose = "python -m funbuns.block_manager --diagnose"
+bmgr-show-runs = "python -m funbuns.block_manager --show-runs"
+
+# Analysis (funbuns)
 ladic = "funbuns --ladic"
-build-native = "cd funbuns_native && maturin develop --release"
+remainder = "funbuns --remainder"
+zipf = "funbuns --zipf"
+spectral = "funbuns --spectral"
+explore = "funbuns --explore"
+local-global = "funbuns --local-global --explore-q 3"
+baker-circle = "funbuns --baker-circle 149"
+
+# Build
+build-native = "cd funbuns_native && cargo build --release"
 
 [dependencies]
 
@@ -22,23 +41,33 @@ polars = ">=1.38.1,<2"
 py-spy = ">=0.4.1,<0.5"
 python = "==3.12"
 sage = "==10.7"
+pytest = ">=9.0.2,<10"
+pytest-mock = ">=3.15.1,<4"
 
 [tool.funbuns]
 buffer_size = 10000
 small_primes_filename = "small_primes.parquet"
 lim_sm_p = 100000
 max_power = 64
+web_port = 8081
+notebook_port = 8888
 
 [tool.funbuns.directories]
-data_dir = "data"
-runs_dir = "data/runs"
-blocks_dir = "data/blocks"
-backup_dir = "data/backups"
-temp_dir = "data/tmp"
+data_dir = "/media/extssd/research/dioph.pp/data"
+db_path = "/home/erpage159/fluid/research/funbuns/data/funbuns.duckdb"
+log_dir = "logs"
 
 
 [pypi-dependencies]
 funbuns = { path = ".", editable = true }
+giotto-ph = ">=0.2.4, <0.3"
+duckdb = ">=1.5.0, <2"
+fastapi = ">=0.115"
+uvicorn = ">=0.34"
+vegafusion = {version = ">=2.0", extras = ["embed"]}
+vl-convert-python = ">=1.8.0"
+anywidget = ">=0.9"
+pyarrow = ">=18.0"
 
 [environments]
 dev = []

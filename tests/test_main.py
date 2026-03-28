@@ -260,8 +260,17 @@ class TestBufferSizeIndependence:
             from funbuns.__main__ import main
             main()
 
-            _, kwargs = MockManager.call_args
-            buffer_size = kwargs.get("buffer_size") or MockManager.call_args[0][4]
+            # Extract buffer_size from however PPManager was called
+            call_args, call_kwargs = MockManager.call_args
+            # Try keyword first, fall back to scanning positional args
+            buffer_size = call_kwargs.get("buffer_size")
+            if buffer_size is None:
+                # Find the int arg that's suspiciously 2x batch_size
+                for arg in call_args:
+                    if isinstance(arg, int) and arg == 2_000_000:
+                        buffer_size = arg
+                        break
+            assert buffer_size is not None, "Could not find buffer_size in PPManager call"
             assert buffer_size <= 500_000, (
                 f"buffer_size={buffer_size} is too large for batch_size=1M "
                 f"(should be memory-aware, not 2*batch_size)"

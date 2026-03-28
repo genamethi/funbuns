@@ -1,6 +1,7 @@
 # pixi environments
 .pixi
 data/*
+logs/
 error.log
 __pycache__
 *.parquet

@@ -247,25 +247,14 @@ class TestGracefulSIGINT:
         runs_dir = tmp_path / "runs"
         runs_dir.mkdir()
         (tmp_path / "blocks").mkdir()
-        sentinel = tmp_path / "started.flag"
 
-        # Script uses 5 batches of 1000 — enough that some complete before SIGINT.
-        # We write a sentinel after the first batch returns so the parent knows
-        # generation is actively producing results.
+        # Use enough batches that some complete before SIGINT arrives.
+        # Detection: poll for run parquet files appearing on disk (no
+        # internal monkey-patching — works regardless of implementation).
         script = f"""\
 import os, sys
 os.environ["FUNBUNS_DATA_DIR"] = "{tmp_path}"
-
-# Monkey-patch consumer to write a sentinel on first flush
-import funbuns.core as _core
-_orig_add = _core.PPConsumer.add_results
-def _patched_add(self, df):
-    _orig_add(self, df)
-    if self.result_count > 0:
-        open("{sentinel}", "w").write("ok")
-_core.PPConsumer.add_results = _patched_add
-
-sys.argv = ["funbuns", "-n", "5000", "-b", "1000"]
+sys.argv = ["funbuns", "-n", "10000", "-b", "1000"]
 from funbuns.__main__ import main
 main()
 """
@@ -275,15 +264,18 @@ main()
             stderr=subprocess.PIPE,
         )
 
-        # Wait for generation to start producing results
-        deadline = time.monotonic() + 30
+        # Wait for generation to produce at least one run file, or for
+        # stdout activity indicating batches are being processed.
+        deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
-            if sentinel.exists():
-                break
+            if list(runs_dir.glob("*.parquet")):
+                break  # Data is landing on disk
             if proc.poll() is not None:
                 break  # Process already exited
-            time.sleep(0.1)
+            time.sleep(0.2)
 
+        # Give a moment for in-flight batches to return, then interrupt
+        time.sleep(0.5)
         if proc.poll() is None:
             proc.send_signal(signal.SIGINT)
 
