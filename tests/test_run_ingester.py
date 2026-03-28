@@ -5,6 +5,7 @@ from unittest.mock import patch
 
 import polars as pl
 import pytest
+from funbuns import VERSION
 
 from funbuns.run_ingester import integrate_runs_into_blocks
 
@@ -158,6 +159,7 @@ PARTITION_DTYPES = {"p": pl.Int64, "m_k": pl.Int64, "n_k": pl.Int64, "q_k": pl.I
 
 
 @pytest.mark.xfail(
+    condition=VERSION < (1, 1, 0),
     reason="Run files deleted before integrity verification — crash between "
            "delete and write loses data",
     strict=True,

@@ -2,11 +2,17 @@
 Setup configuration for funbuns package.
 """
 
+import tomllib
+from pathlib import Path
+
 from setuptools import setup, find_packages
+
+with open(Path(__file__).parent / "pixi.toml", "rb") as f:
+    _version = tomllib.load(f)["workspace"]["version"]
 
 setup(
     name="funbuns",
-    version="0.1.0",
+    version=_version,
     description="Prime decomposition analysis: p = 2^m + q^n",
     author="erpage159",
     package_dir={"": "src"},

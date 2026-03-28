@@ -4,6 +4,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from funbuns import VERSION
 
 from funbuns.dataprep import prepare_prime_powers
 
@@ -51,6 +52,7 @@ class TestPreparePrimePowers:
         assert df.height == 25
 
     @pytest.mark.xfail(
+        condition=VERSION < (1, 1, 0),
         reason="Polars .pow() silently wraps on Int64 overflow, so the "
                "<= int64_max guard sees the wrapped (positive) value as safe. "
                "Only overflows that wrap to negative are caught.",

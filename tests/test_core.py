@@ -13,6 +13,7 @@ import polars as pl
 import pytest
 
 from funbuns.utils import PARTITION_SCHEMA
+from funbuns import VERSION
 
 
 @pytest.mark.sage
@@ -227,6 +228,7 @@ class TestPPBatchFeeder:
 
 @pytest.mark.slow
 @pytest.mark.xfail(
+    condition=VERSION < (1, 1, 0),
     reason="No signal handling in PPManager — SIGINT kills workers abruptly, "
            "loses in-flight results, no cleanup",
     strict=True,
@@ -307,6 +309,7 @@ main()
 
 
 @pytest.mark.xfail(
+    condition=VERSION < (1, 1, 0),
     reason="JournalWriter not wired into generation pipeline",
     strict=True,
 )

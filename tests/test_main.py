@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
+from funbuns import VERSION
 
 
 class TestCLIFlagRouting:
@@ -198,6 +199,7 @@ class TestArgumentGroupCoverage:
 
 
 @pytest.mark.xfail(
+    condition=VERSION < (1, 1, 0),
     reason="No logging in admin/bmgr entry points",
     strict=True,
 )
@@ -234,6 +236,7 @@ class TestAdminBmgrLogging:
 
 
 @pytest.mark.xfail(
+    condition=VERSION < (1, 1, 0),
     reason="buffer_size coupled to batch_size via hardcoded multiplier "
            "(__main__.py:298: buffer_size = batch_size * 2)",
     strict=True,

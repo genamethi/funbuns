@@ -5,6 +5,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from funbuns import VERSION
 
 from funbuns.block_catalog import BlockInfo
 from funbuns.data_integrity import (
@@ -293,6 +294,7 @@ class TestDusartPiBounds:
 
 
 @pytest.mark.xfail(
+    condition=VERSION < (1, 1, 0),
     reason="Paranoid mode not implemented — no intra-block missing prime detection",
     strict=True,
 )
@@ -325,6 +327,7 @@ class TestParanoidIntraBlock:
 
 
 @pytest.mark.xfail(
+    condition=VERSION < (1, 1, 0),
     reason="Automatic paranoid escalation not implemented — no Schoenfeld "
            "bound trigger, no rolling delta tracking",
     strict=True,
@@ -361,6 +364,7 @@ class TestSchoenfeldEscalation:
 
 
 @pytest.mark.xfail(
+    condition=VERSION < (1, 1, 0),
     reason="Paranoid mode not implemented — no exact missing-prime enumeration",
     strict=True,
 )

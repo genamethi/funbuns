@@ -7,6 +7,7 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from funbuns import VERSION
 
 from funbuns.utils import (
     JournalWriter,
@@ -195,6 +196,7 @@ data_dir = "{config_dir}"
 
 
 @pytest.mark.xfail(
+    condition=VERSION < (1, 1, 0),
     reason="Inconsistent directory creation: blocks_dir does not mkdir, "
            "but append_data auto-creates runs/",
     strict=True,
