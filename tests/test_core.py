@@ -1,5 +1,14 @@
 """Tests for core.py: PPBatchProcessor, worker_batch, PPConsumer, PPBatchFeeder."""
 
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+from pathlib import Path
+from unittest.mock import patch, MagicMock
+
 import polars as pl
 import pytest
 
@@ -214,3 +223,130 @@ class TestPPBatchFeeder:
 
         with pytest.raises(ValueError, match="divisible"):
             PPBatchFeeder(init_p=2, num_primes=100, batch_size=7)
+
+
+@pytest.mark.slow
+@pytest.mark.xfail(
+    reason="No signal handling in PPManager — SIGINT kills workers abruptly, "
+           "loses in-flight results, no cleanup",
+    strict=True,
+)
+class TestGracefulSIGINT:
+    """X1: ctrl+c should cleanly terminate workers and flush completed results.
+
+    Desired behavior:
+    - Workers receive SIG_IGN (via pool initializer), so they don't crash
+    - Main process catches SIGINT, calls pool.terminate(), flushes consumer
+    - Any batches already returned by imap_unordered are flushed to disk
+    - Process exits 0 (not KeyboardInterrupt traceback)
+    - No zombie worker processes remain
+    """
+
+    def test_sigint_flushes_completed_results(self, tmp_path):
+        """After SIGINT, completed batch results must be on disk."""
+        runs_dir = tmp_path / "runs"
+        runs_dir.mkdir()
+        (tmp_path / "blocks").mkdir()
+        sentinel = tmp_path / "started.flag"
+
+        # Script uses 5 batches of 1000 — enough that some complete before SIGINT.
+        # We write a sentinel after the first batch returns so the parent knows
+        # generation is actively producing results.
+        script = f"""\
+import os, sys
+os.environ["FUNBUNS_DATA_DIR"] = "{tmp_path}"
+
+# Monkey-patch consumer to write a sentinel on first flush
+import funbuns.core as _core
+_orig_add = _core.PPConsumer.add_results
+def _patched_add(self, df):
+    _orig_add(self, df)
+    if self.result_count > 0:
+        open("{sentinel}", "w").write("ok")
+_core.PPConsumer.add_results = _patched_add
+
+sys.argv = ["funbuns", "-n", "5000", "-b", "1000"]
+from funbuns.__main__ import main
+main()
+"""
+        proc = subprocess.Popen(
+            [sys.executable, "-c", script],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+
+        # Wait for generation to start producing results
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline:
+            if sentinel.exists():
+                break
+            if proc.poll() is not None:
+                break  # Process already exited
+            time.sleep(0.1)
+
+        if proc.poll() is None:
+            proc.send_signal(signal.SIGINT)
+
+        stdout, stderr = proc.communicate(timeout=30)
+
+        # --- Assertions for the desired graceful-exit feature ---
+
+        # 1. Clean exit (0), not a KeyboardInterrupt crash (1) or signal death (-2)
+        assert proc.returncode == 0, (
+            f"Expected clean exit (rc=0), got {proc.returncode}.\n"
+            f"stderr: {stderr.decode()[-500:]}"
+        )
+
+        # 2. No KeyboardInterrupt traceback in output
+        combined = stdout.decode() + stderr.decode()
+        assert "KeyboardInterrupt" not in combined, (
+            "KeyboardInterrupt traceback leaked to output — handler didn't catch it"
+        )
+
+        # 3. Completed results actually flushed to disk
+        run_files = list(runs_dir.glob("*.parquet"))
+        assert len(run_files) >= 1, (
+            "No run files on disk after SIGINT — completed results were lost"
+        )
+
+        # 4. Flushed data is valid and non-empty
+        total_rows = sum(pl.read_parquet(f).height for f in run_files)
+        assert total_rows > 0, "Run files exist but contain no data"
+
+
+@pytest.mark.xfail(
+    reason="JournalWriter not wired into generation pipeline",
+    strict=True,
+)
+class TestGenerationJournalLogging:
+    """X2: Generation pipeline should produce structured journal entries.
+
+    Expected events: run_start (args, init_p, timestamp),
+    batch_complete (count, primes_processed), flush (rows, file),
+    run_end (total_primes, duration).
+    """
+
+    def test_generation_creates_journal(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(tmp_path))
+        (tmp_path / "blocks").mkdir()
+        (tmp_path / "runs").mkdir()
+        (tmp_path / "logs").mkdir()
+
+        with (
+            patch("sys.argv", ["funbuns", "-n", "1000", "-b", "1000"]),
+            patch("funbuns.__main__.PPManager") as MockManager,
+        ):
+            instance = MagicMock()
+            MockManager.return_value = instance
+            instance.run_gen.return_value = None
+
+            from funbuns.__main__ import main
+            main()
+
+        journal = tmp_path / "logs" / "funbuns.jsonl"
+        assert journal.exists(), "No journal file created"
+
+        entries = [json.loads(line) for line in journal.read_text().strip().split("\n")]
+        events = [e["event"] for e in entries]
+        assert "run_start" in events
+        assert "run_end" in events

@@ -15,6 +15,8 @@ from funbuns.data_integrity import (
     validate_completeness_fast,
 )
 
+PARTITION_DTYPES = {"p": pl.Int64, "m_k": pl.Int64, "n_k": pl.Int64, "q_k": pl.Int64}
+
 
 def _make_block_parquet(path: Path, primes: list[int], m_k=None, n_k=None, q_k=None):
     """Write a minimal partition parquet to path."""
@@ -288,3 +290,105 @@ class TestDusartPiBounds:
             assert lo > prev_lo
             assert hi > prev_hi
             prev_lo, prev_hi = lo, hi
+
+
+@pytest.mark.xfail(
+    reason="Paranoid mode not implemented — no intra-block missing prime detection",
+    strict=True,
+)
+class TestParanoidIntraBlock:
+    """X6: Paranoid mode should detect missing primes within a block.
+
+    Layers 1-3 of validate_completeness_fast check coverage intervals and
+    aggregate counts, not individual primes. Layer 4 (verify_count_exact)
+    detects count mismatches but not *which* prime is missing. A paranoid
+    mode should enumerate all primes in [min_p, max_p] and verify each
+    appears in the data.
+    """
+
+    def test_detects_missing_prime_in_block(self, tmp_path):
+        from funbuns.data_integrity import paranoid_verify_block
+
+        # Block claims primes 2..29 but omits 23
+        primes = [2, 3, 5, 7, 11, 13, 17, 19, 29]  # 23 missing
+        path = tmp_path / "pp_b000_p29.parquet"
+        n = len(primes)
+        pl.DataFrame({
+            "p": primes,
+            "m_k": [1] * n,
+            "n_k": [1] * n,
+            "q_k": [3] * n,
+        }).cast(PARTITION_DTYPES).write_parquet(path)
+
+        result = paranoid_verify_block(path)
+        assert 23 in result["missing_primes"]
+
+
+@pytest.mark.xfail(
+    reason="Automatic paranoid escalation not implemented — no Schoenfeld "
+           "bound trigger, no rolling delta tracking",
+    strict=True,
+)
+class TestSchoenfeldEscalation:
+    """X7: Automatic paranoid escalation via Schoenfeld (1976) bound.
+
+    Graduated response during run ingestion:
+    1. Delta within Dusart bounds -> no action.
+    2. Delta exceeds expected variance over rolling window -> warning, recommend --paranoid.
+    3. Delta exceeds C*sqrt(x)*ln(x) (Schoenfeld: |pi(x)-Li(x)| < sqrt(x)*ln(x)/(8*pi)
+       for x >= 2657 under RH) -> auto-trigger paranoid.
+
+    At our scale (x ~ 25B) breaching Schoenfeld is near-certain data loss,
+    not a refutation of RH.
+    """
+
+    def test_delta_exceeding_schoenfeld_triggers_paranoid(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(tmp_path))
+        (tmp_path / "blocks").mkdir()
+        (tmp_path / "runs").mkdir()
+
+        x = 100_000
+        schoenfeld_bound = math.sqrt(x) * math.log(x) / (8 * math.pi)
+
+        from funbuns.data_integrity import check_paranoid_escalation
+
+        result = check_paranoid_escalation(
+            observed_count=50,  # Way below pi(100000) ~ 9592
+            max_prime=x,
+        )
+        assert result["trigger_paranoid"] is True
+        assert result["reason"] == "schoenfeld"
+
+
+@pytest.mark.xfail(
+    reason="Paranoid mode not implemented — no exact missing-prime enumeration",
+    strict=True,
+)
+@pytest.mark.sage
+class TestParanoidOptimal:
+    """X8: Paranoid mode should enumerate missing primes via PARI prime_range.
+
+    O(n) in number of primes, O(1) per prime via hash lookup. Returns the
+    exact set of missing primes and any unexpected entries (non-primes,
+    out-of-range values).
+    """
+
+    def test_exact_missing_set(self, tmp_path):
+        from funbuns.data_integrity import paranoid_verify_range
+        from sage.all import prime_range as sage_prime_range
+
+        all_primes = [int(p) for p in sage_prime_range(1000)]
+        removed = {23, 149, 373, 509, 877}
+        present = [p for p in all_primes if p not in removed]
+
+        path = tmp_path / "pp_b000_p997.parquet"
+        n = len(present)
+        pl.DataFrame({
+            "p": present,
+            "m_k": [1] * n,
+            "n_k": [1] * n,
+            "q_k": [3] * n,
+        }).cast(PARTITION_DTYPES).write_parquet(path)
+
+        result = paranoid_verify_range(path, min_p=2, max_p=997)
+        assert set(result["missing_primes"]) == removed

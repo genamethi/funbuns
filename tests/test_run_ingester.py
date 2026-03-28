@@ -1,6 +1,7 @@
 """Tests for run_ingester.py: integration, deduplication, partial block absorption."""
 
 from pathlib import Path
+from unittest.mock import patch
 
 import polars as pl
 import pytest
@@ -151,3 +152,117 @@ class TestPartialBlockAbsorption:
         all_data = _read_all_blocks(blocks)
         primes = all_data["p"].unique().sort().to_list()
         assert primes == [7, 11, 13, 17, 19, 23]
+
+
+PARTITION_DTYPES = {"p": pl.Int64, "m_k": pl.Int64, "n_k": pl.Int64, "q_k": pl.Int64}
+
+
+@pytest.mark.xfail(
+    reason="Run files deleted before integrity verification — crash between "
+           "delete and write loses data",
+    strict=True,
+)
+class TestRunFileDeletionSafety:
+    """X9: Run files should not be deleted until new blocks are verified.
+
+    Two issues in run_ingester.py:
+    1. delete_run_files=True deletes immediately after block writes,
+       with no verification that new blocks contain expected data.
+    2. Partial block absorption (line 103) calls .unlink() on the old
+       block BEFORE writing replacements — a crash between delete and
+       write loses both old block data and unwritten run data.
+
+    Desired: delete run files only after verifying new blocks contain
+    all expected data. If an integrity check is pending/scheduled,
+    defer deletion entirely.
+    """
+
+    def test_integrity_check_before_deletion(self, tmp_path, monkeypatch):
+        """An integrity check must occur between block write and run file delete."""
+        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(tmp_path))
+        runs = tmp_path / "runs"
+        runs.mkdir()
+        blocks = tmp_path / "blocks"
+        blocks.mkdir()
+
+        df = pl.DataFrame({
+            "p": [7, 11, 13],
+            "m_k": [1, 1, 1],
+            "n_k": [1, 1, 1],
+            "q_k": [5, 9, 11],
+        }).cast(PARTITION_DTYPES)
+        df.write_parquet(runs / "run_001.parquet")
+
+        call_log = []
+        original_write = pl.DataFrame.write_parquet
+        original_unlink = Path.unlink
+
+        def tracking_write(self_df, path, *args, **kwargs):
+            call_log.append(("write_block", str(path)))
+            return original_write(self_df, path, *args, **kwargs)
+
+        def tracking_unlink(self_path, *args, **kwargs):
+            call_log.append(("delete_run", str(self_path)))
+            return original_unlink(self_path, *args, **kwargs)
+
+        with (
+            patch.object(pl.DataFrame, "write_parquet", tracking_write),
+            patch.object(Path, "unlink", tracking_unlink),
+        ):
+            integrate_runs_into_blocks(
+                target_prime_count=100,
+                delete_run_files=True,
+                verbose=False,
+            )
+
+        events = [e[0] for e in call_log]
+        assert "integrity_check" in events, (
+            f"No integrity check between block write and run file deletion. "
+            f"Event sequence: {events}"
+        )
+
+    def test_old_block_survives_failed_absorption(self, tmp_path, monkeypatch):
+        """Old undersized block must not be deleted until replacement is confirmed."""
+        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(tmp_path))
+        runs = tmp_path / "runs"
+        runs.mkdir()
+        blocks = tmp_path / "blocks"
+        blocks.mkdir()
+
+        old_block = pl.DataFrame({
+            "p": [7, 11, 13],
+            "m_k": [1, 1, 1],
+            "n_k": [1, 1, 1],
+            "q_k": [5, 9, 11],
+        }).cast(PARTITION_DTYPES)
+        old_block.write_parquet(blocks / "pp_b001_p13.parquet")
+
+        run_df = pl.DataFrame({
+            "p": [17, 19, 23],
+            "m_k": [1, 1, 1],
+            "n_k": [1, 1, 1],
+            "q_k": [15, 17, 21],
+        }).cast(PARTITION_DTYPES)
+        run_df.write_parquet(runs / "run_001.parquet")
+
+        # Fail all new block writes — old block should survive
+        original_write = pl.DataFrame.write_parquet
+
+        def failing_block_write(self_df, path, *args, **kwargs):
+            if "pp_b" in str(path):
+                raise IOError("Simulated write failure")
+            return original_write(self_df, path, *args, **kwargs)
+
+        with patch.object(pl.DataFrame, "write_parquet", failing_block_write):
+            try:
+                integrate_runs_into_blocks(
+                    target_prime_count=10,
+                    delete_run_files=False,
+                    verbose=False,
+                )
+            except IOError:
+                pass
+
+        assert (blocks / "pp_b001_p13.parquet").exists(), (
+            "Old block deleted before replacement written — data loss!"
+        )

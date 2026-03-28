@@ -10,6 +10,7 @@ import pytest
 
 from funbuns.utils import (
     JournalWriter,
+    PARTITION_SCHEMA,
     append_data,
     get_data_dir,
     resume_p,
@@ -191,3 +192,34 @@ data_dir = "{config_dir}"
         result = get_data_dir()
         assert result == Path("data")
         assert (tmp_path / "data").exists()  # Should be created
+
+
+@pytest.mark.xfail(
+    reason="Inconsistent directory creation: blocks_dir does not mkdir, "
+           "but append_data auto-creates runs/",
+    strict=True,
+)
+class TestBlocksDirCreation:
+    """X5: blocks_dir() should create the directory like other data-path functions."""
+
+    def test_blocks_dir_creates_missing_directory(self, tmp_path, monkeypatch):
+        fresh = tmp_path / "fresh_data"
+        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(fresh))
+
+        data_dir = get_data_dir()
+        blocks = data_dir / "blocks"
+
+        # append_data creates runs/ automatically
+        df = pl.DataFrame(
+            {"p": [7], "m_k": [1], "n_k": [1], "q_k": [5]},
+            schema=PARTITION_SCHEMA,
+        )
+        append_data(df)
+
+        runs = data_dir / "runs"
+        assert runs.exists(), "runs/ should be auto-created by append_data"
+
+        # blocks/ should also exist (currently it doesn't)
+        assert blocks.exists(), (
+            "blocks/ not auto-created — inconsistent with runs/ behavior"
+        )

@@ -1,5 +1,7 @@
 """Tests for __main__.py: CLI flag routing and argument group coverage."""
 
+import json
+from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 import pytest
@@ -193,3 +195,74 @@ class TestArgumentGroupCoverage:
         args = self._parse(["-vv"])
         assert args.debug is True
         assert args.verbose is False  # -vv does NOT set -v
+
+
+@pytest.mark.xfail(
+    reason="No logging in admin/bmgr entry points",
+    strict=True,
+)
+class TestAdminBmgrLogging:
+    """X3: funbuns-admin and bmgr should produce journal entries.
+
+    Each entry point should log invocations, operations, and errors
+    with distinct module tags (admin, bmgr) to separate journal files.
+    """
+
+    def test_admin_db_status_logs(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(tmp_path))
+        (tmp_path / "logs").mkdir()
+
+        with (
+            patch("sys.argv", ["funbuns-admin", "db", "status"]),
+            patch("funbuns.admin.QueryDB") as MockDB,
+        ):
+            MockDB.return_value.__enter__ = MagicMock(return_value=MagicMock())
+            MockDB.return_value.__exit__ = MagicMock(return_value=False)
+
+            try:
+                from funbuns.admin import main as admin_main
+                admin_main()
+            except (SystemExit, Exception):
+                pass
+
+        journal = tmp_path / "logs" / "admin.jsonl"
+        assert journal.exists(), "No admin journal file created"
+
+        entries = [json.loads(line) for line in journal.read_text().strip().split("\n")]
+        modules = [e.get("module") for e in entries]
+        assert "admin" in modules, "No entries with module='admin'"
+
+
+@pytest.mark.xfail(
+    reason="buffer_size coupled to batch_size via hardcoded multiplier "
+           "(__main__.py:298: buffer_size = batch_size * 2)",
+    strict=True,
+)
+class TestBufferSizeIndependence:
+    """X4: buffer_size should not scale linearly with batch_size.
+
+    With batch_size=1M and 12 workers, each batch returns ~2M rows.
+    buffer_size = 2M means flush fires on nearly every result — excessive I/O.
+    Desired: memory-aware flush trigger, ~70% utilization without thrashing.
+    """
+
+    def test_large_batch_reasonable_buffer(self):
+        with (
+            patch("sys.argv", ["funbuns", "-n", "1000000", "-b", "1000000"]),
+            patch("funbuns.__main__.PPManager") as MockManager,
+            patch("funbuns.__main__.setup_logging"),
+            patch("funbuns.__main__.get_config", return_value={}),
+            patch("funbuns.utils.resume_p", return_value=None),
+            patch("funbuns.utils.get_data_dir", return_value=Path("/tmp/test")),
+            patch("funbuns.utils.setup_analysis_mode", return_value=(2, MagicMock(), None)),
+            patch("psutil.cpu_count", return_value=12),
+        ):
+            from funbuns.__main__ import main
+            main()
+
+            _, kwargs = MockManager.call_args
+            buffer_size = kwargs.get("buffer_size") or MockManager.call_args[0][4]
+            assert buffer_size <= 500_000, (
+                f"buffer_size={buffer_size} is too large for batch_size=1M "
+                f"(should be memory-aware, not 2*batch_size)"
+            )
