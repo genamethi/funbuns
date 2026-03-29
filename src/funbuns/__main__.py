@@ -20,7 +20,12 @@ import polars as pl
 def _check_block_data() -> bool:
     """Check that block data exists. Returns True if blocks found."""
     block_dir = get_data_dir() / "blocks"
-    if not block_dir.exists() or not list(block_dir.glob("pp_b*.parquet")):
+    if not block_dir.exists():
+        print("Error: No block data found in data/blocks/.")
+        print("Run `funbuns -n <N>` first to generate prime partition data.")
+        return False
+    # Use next() instead of list() to avoid materializing 12K+ paths
+    if next(block_dir.glob("pp_b*.parquet"), None) is None:
         print("Error: No block data found in data/blocks/.")
         print("Run `funbuns -n <N>` first to generate prime partition data.")
         return False

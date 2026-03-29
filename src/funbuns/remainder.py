@@ -16,6 +16,7 @@ Running accumulators live in data/remainder_agg/:
 
 import json
 import time
+import traceback
 from math import log, sqrt
 from pathlib import Path
 from typing import Optional
@@ -297,7 +298,12 @@ def run_remainder_analysis(limit: Optional[int] = None,
     block_files = _block_files()
 
     if not block_files:
-        print("No block data found.")
+        block_dir = get_data_dir().joinpath("blocks")
+        journal.log("remainder", "no_block_data",
+                    data_dir=str(get_data_dir()),
+                    block_dir=str(block_dir),
+                    block_dir_exists=block_dir.exists())
+        print(f"No block data found. (checked {block_dir})")
         return
 
     print("=== Remainder Profiling (incremental) ===\n")
@@ -324,56 +330,78 @@ def run_remainder_analysis(limit: Optional[int] = None,
     print(f"  {len(pending)} blocks to process\n")
 
     journal.log("remainder", "run_start",
-                pending=len(pending), done=len(done_blocks))
+                pending=len(pending), done=len(done_blocks),
+                n_block_files=len(block_files))
     t0 = time.perf_counter()
     new_primes = 0
+    current_block = None
 
-    for i, block_path in enumerate(pending):
-        print(f"  [{i+1}/{len(pending)}] {block_path.name}", end="", flush=True)
-        bt = time.perf_counter()
+    try:
+        for i, block_path in enumerate(pending):
+            current_block = block_path.name
+            print(f"  [{i+1}/{len(pending)}] {current_block}", end="", flush=True)
+            bt = time.perf_counter()
 
-        block_df = _analyze_block(block_path, filtration_primes)
+            block_df = _analyze_block(block_path, filtration_primes)
 
-        if block_df.height == 0:
-            print(" -- no obstructed primes", flush=True)
-            manifest["blocks"][block_path.stem] = {"n_primes": 0, "n_rows": 0}
-            _save_manifest(agg_dir, manifest)
-            continue
+            if block_df.height == 0:
+                print(" -- no obstructed primes", flush=True)
+                manifest["blocks"][block_path.stem] = {"n_primes": 0, "n_rows": 0}
+                _save_manifest(agg_dir, manifest)
+                continue
 
-        summaries = _compute_block_summaries(block_df, filtration_primes)
-        del block_df
+            summaries = _compute_block_summaries(block_df, filtration_primes)
+            del block_df
 
-        # Merge into running accumulators
-        n_p = summaries['n_primes']
-        n_r = summaries['n_rows']
-        stats['obstructed_primes'] += n_p
-        stats['total_remainder_rows'] += n_r
-        for k in ('ek_n', 'ek_omega_sum', 'ek_omega_sq_sum',
-                   'ek_loglogr_sum', 'ek_loglogr_sq_sum'):
-            stats[k] += summaries['ek_stats'][k]
+            # Merge into running accumulators
+            n_p = summaries['n_primes']
+            n_r = summaries['n_rows']
+            stats['obstructed_primes'] += n_p
+            stats['total_remainder_rows'] += n_r
+            for k in ('ek_n', 'ek_omega_sum', 'ek_omega_sq_sum',
+                       'ek_loglogr_sum', 'ek_loglogr_sq_sum'):
+                stats[k] += summaries['ek_stats'][k]
 
-        omega_agg = _merge_omega(omega_agg, summaries['omega_df'])
-        near_misses = _merge_near_misses(near_misses, summaries['near_miss_df'])
-        filtration_agg = _merge_filtration(filtration_agg, summaries['filtration_df'])
+            omega_agg = _merge_omega(omega_agg, summaries['omega_df'])
+            near_misses = _merge_near_misses(near_misses, summaries['near_miss_df'])
+            filtration_agg = _merge_filtration(filtration_agg, summaries['filtration_df'])
 
-        # Update manifest
-        elapsed_block = time.perf_counter() - bt
-        manifest["blocks"][block_path.stem] = {
-            "n_primes": n_p, "n_rows": n_r,
-        }
-        new_primes += n_p
+            # Update manifest
+            elapsed_block = time.perf_counter() - bt
+            manifest["blocks"][block_path.stem] = {
+                "n_primes": n_p, "n_rows": n_r,
+            }
+            new_primes += n_p
 
-        print(f" -- {n_p} primes, {n_r} rows, {elapsed_block:.1f}s", flush=True)
+            print(f" -- {n_p} primes, {n_r} rows, {elapsed_block:.1f}s", flush=True)
 
-        # Periodic save (every 50 blocks)
-        if (i + 1) % 50 == 0:
+            # Periodic save (every 50 blocks)
+            if (i + 1) % 50 == 0:
+                _save_all(agg_dir, manifest, stats, omega_agg, near_misses, filtration_agg)
+                journal.log("remainder", "checkpoint",
+                            blocks_done=len(manifest["blocks"]),
+                            obstructed=stats['obstructed_primes'],
+                            current_block=current_block)
+
+            if limit is not None and new_primes >= limit:
+                break
+
+    except Exception as exc:
+        # Save what we have so far before dying
+        try:
             _save_all(agg_dir, manifest, stats, omega_agg, near_misses, filtration_agg)
-            journal.log("remainder", "checkpoint",
-                        blocks_done=len(manifest["blocks"]),
-                        obstructed=stats['obstructed_primes'])
-
-        if limit is not None and new_primes >= limit:
-            break
+        except Exception:
+            pass
+        elapsed = time.perf_counter() - t0
+        journal.log("remainder", "run_error",
+                    error=str(exc),
+                    error_type=type(exc).__name__,
+                    traceback=traceback.format_exc(),
+                    current_block=current_block,
+                    blocks_done=len(manifest["blocks"]),
+                    obstructed=stats.get('obstructed_primes', 0),
+                    elapsed_s=round(elapsed, 2))
+        raise
 
     # Final save
     # Count total primes from block data

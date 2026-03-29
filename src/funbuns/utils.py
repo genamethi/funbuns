@@ -151,16 +151,36 @@ def get_log_dir() -> Path:
 
 
 class JournalWriter:
-    """Append-only JSONL event logger. One line per event, central journal."""
+    """Append-only JSONL event logger. One line per event, central journal.
+
+    Every event automatically includes PID and memory stats (RSS/VMS in MB)
+    via psutil, so crashes and leaks can be diagnosed after the fact.
+    """
 
     def __init__(self, path: Optional[Path] = None):
         self.path = path or get_log_dir() / "journal.jsonl"
+        self._pid = os.getpid()
+
+    @staticmethod
+    def _mem_stats() -> dict:
+        """Return RSS and VMS in MB, or empty dict if psutil unavailable."""
+        try:
+            import psutil
+            mem = psutil.Process().memory_info()
+            return {
+                "rss_mb": round(mem.rss / 1_048_576, 1),
+                "vms_mb": round(mem.vms / 1_048_576, 1),
+            }
+        except Exception:
+            return {}
 
     def log(self, module: str, event: str, **payload):
         entry = {
             "ts": datetime.now(timezone.utc).isoformat(),
+            "pid": self._pid,
             "module": module,
             "event": event,
+            **self._mem_stats(),
             **payload,
         }
         with open(self.path, "a") as f:
