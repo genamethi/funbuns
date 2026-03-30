@@ -73,6 +73,17 @@ impl FactorInfo {
         }
     }
 
+    /// Look up the exponent of `ell` in the factorization (0 if absent).
+    #[inline]
+    fn v_ell(&self, ell: i64) -> i32 {
+        for i in 0..self.nfactors {
+            if self.factors[i].0 == ell {
+                return self.factors[i].1 as i32;
+            }
+        }
+        0
+    }
+
     #[inline]
     fn push(&mut self, p: i64, e: u32) {
         if self.nfactors < 16 {
@@ -480,9 +491,9 @@ fn full_profile(inputs: &[Series], kwargs: FullProfileKwargs) -> PolarsResult<Se
         // is_prime_power
         is_pp_vals.push(info.nfactors == 1);
 
-        // v_ell for each filtration prime
+        // v_ell for each filtration prime (from factorization, no re-division)
         for (j, &ell) in filt_primes.iter().enumerate() {
-            v_ell_vecs[j].push(v_ell_scalar(abs_n, ell));
+            v_ell_vecs[j].push(info.v_ell(ell));
         }
     }
 

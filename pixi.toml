@@ -70,9 +70,20 @@ anywidget = ">=0.9"
 pyarrow = ">=18.0"
 
 [environments]
-dev = []
-
-[tool.pixi.feature.dev.dependencies]
-
-[tool.pixi.environments]
 dev = ["dev"]
+
+[feature.dev.tasks]
+# Composable: scripts/profile.sh <pyspy|trace|instr> <command> [args...]
+profile = "scripts/profile.sh"
+
+# Shortcuts for common profiling targets
+profile-ladic = "scripts/profile.sh pyspy funbuns --ladic"
+profile-remainder = "scripts/profile.sh pyspy funbuns --remainder"
+trace-ladic = "scripts/profile.sh trace funbuns --ladic"
+trace-remainder = "scripts/profile.sh trace funbuns --remainder"
+
+[feature.dev.dependencies]
+pyinstrument = "*"
+
+[feature.dev.pypi-dependencies]
+viztracer = "*"
