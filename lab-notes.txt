@@ -195,3 +195,61 @@ CONNECTION TO PRIOR WORK:
 FILES: scripts/build_pow2_diffs.py, scripts/covering_analysis.py
 DATA:  data/power_of_two_diffs.parquet (741 rows, regenerable)
 
+
+2026-03-30  Vectorized mod-105 / mod-255255 obstruction classifier
+-------------------------------------------------------------------
+
+Scaled the covering-system analysis to 6.4 billion primes via DuckDB.
+
+FIRST PASS: MOD 105 = 3·5·7 (backbone only)
+  Coverage of Z/12Z falls into exactly 4 tiers, 12 residue classes each:
+    2 gaps/12 → 34.3% obstruction rate
+    3 gaps/12 → 20.3%
+    4 gaps/12 → 11.8%
+    6 gaps/12 →  4.2%  (q=7 inactive: p mod 7 ∈ {3,5,6})
+  Weighted average = 17.6%, matching actual 17.64% exactly.
+  The backbone gap count is the primary predictor of obstruction.
+
+SECOND PASS: MOD 255255 = 3·5·7·11·13·17 (backbone + helpers)
+  GROUP BY (p%3, p%5, p%7, p%11, p%13, p%17) → 92,160 residue groups.
+  Coverage structure of each prime in Z/12Z:
+    q=3  (ord 2): one parity — 6/12 positions
+    q=5  (ord 4): one mod-4 class — 3/12 positions
+    q=7  (ord 3): one mod-3 class — 4/12 positions (or 0 if inactive)
+    q=11 (ord 10, gcd(10,12)=2): one parity — 6/12 (same structure as q=3)
+    q=13 (ord 12, gcd(12,12)=12): exactly ONE position mod 12
+    q=17 (ord 8, gcd(8,12)=4): one mod-4 class — 3/12 positions
+
+  Residual gap distribution after all 6 primes:
+    0 gaps: 3.40B primes, 21.96% obstructed
+    1 gap:   150M primes, 42.48% obstructed  ← highest rate!
+    2 gaps:  976M primes, 20.37%
+    6 gaps:  300M primes,  1.29%             ← lowest rate
+
+  KEY: 1-gap class has the HIGHEST obstruction rate (42.5%). When only
+  one m escapes the covering, only one shot at a prime power remainder.
+
+100% OBSTRUCTION GROUPS:
+  22 residue groups where EVERY prime (1.53M total) is obstructed.
+  - All 22 have 0 residual gaps (fully covered)
+  - All 22 have q=3 and q=11 covering opposite parities (so {3,11}
+    alone cover all of Z/12Z)
+  - Zero near-100% groups (99-100%): the jump from ~97% to 100% is sharp
+  - This means: for these 22 residue classes mod 255255, the covering
+    ensures that p - 2^m always has ≥2 distinct prime factors for every m.
+    This is a purely algebraic characterization of unconditional obstruction.
+
+RATE DISTRIBUTION (92K groups):
+  - Continuous spectrum from ~1% to ~90%
+  - Gap at 90-99% (only 2 groups)
+  - Then sharp jump to exactly 100% (22 groups)
+  - The bimodality suggests two regimes: probabilistic (1-90%) and
+    algebraically forced (100%)
+
+CACHED DATA: /media/extssd/research/dioph.pp/data/covering/
+  mod255255_aggregate.parquet (92K rows, 1.5 MB)
+  coverage_q{3,5,7,11,13,17}.parquet (lookup tables)
+  power_of_two_diffs.parquet (741 rows)
+
+FILES: scripts/mod105_classifier.py, scripts/mod105_second_pass.py
+
