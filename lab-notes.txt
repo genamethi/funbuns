@@ -144,3 +144,54 @@ Next steps:
   - Determine if any obstructed primes are locally unobstructed at all l
     (these would be the "interesting" primes from a local-global perspective)
 
+
+2026-03-30  Covering-system characterization of obstructed primes
+-----------------------------------------------------------------
+
+Key insight: the obstruction mechanism is a covering system in the sense
+of Erdős.  For p = 2^m + q^n, if p is obstructed (k=0), then for every
+m in [1, floor(log2(p))], the remainder r = p - 2^m has at least two
+distinct prime factors (it's never a prime power).
+
+The propagation rule is:
+  If q | p - 2^k  and  q | 2^m - 2^k,  then  q | p - 2^m.
+
+Since 2^m - 2^k = 2^k(2^{m-k} - 1), the odd part is always a Mersenne
+number M_d = 2^d - 1 where d = m - k.  Prime q divides M_d iff
+ord(2, q) | d.  So if q | p - 2^k, then q also divides p - 2^{k+j·ord(2,q)}
+for all j -- an arithmetic progression of "poisoned" m-values.
+
+An obstructed prime is one where these progressions COVER all valid m:
+
+  [1, floor(log2(p))] ⊆ ⋃_i { k_i + j · ord(2, q_i) : j ≥ 0 }
+
+where each q_i | p - 2^{k_i}.
+
+EMPIRICAL RESULTS (499 obstructed primes, p up to ~30K):
+  - 499/499 (100%) fully explained by covering systems of small primes
+  - Covering set size distribution: mode = 5, range = [3, 8]
+  - The backbone {3, 5, 7} with orders {2, 4, 3} appears in nearly all covers:
+      q=3: 100%, q=5: 84%, q=7: 65%
+  - LCM(2, 3, 4) = 12, so the backbone repeats with period 12
+  - For small primes, {3, 5, 7} + a few helpers (11, 13, 17, ...) suffice
+  - Residue classes mod 105 = 3·5·7 determine which backbone classes apply
+
+STRUCTURAL IMPLICATIONS:
+  1. The "dual" of the q_k recurrence chains: those describe which q^n
+     appear as solutions; covering systems describe why NO q^n can appear.
+  2. The obstruction rate (~17.3%) should be computable as: the density
+     of primes p such that the covering conditions are satisfiable,
+     i.e., p mod q ≡ 2^{k_i} mod q for enough (q_i, k_i) pairs.
+  3. Scalability: as p grows, max_m ~ log2(p), and the covering only
+     needs log2(p) positions covered.  Since ord(2,3) = 2 already covers
+     half, this grows very slowly in the number of primes needed.
+
+CONNECTION TO PRIOR WORK:
+  - The d=12 periodicity noted 2026-03-18 (ord_13(2) = 12 in q'=13
+    gap structure) is a special case of this covering mechanism.
+  - Fixed-mod analysis (multiplicative orders governing gap periodicity)
+    was seeing the same phenomenon from the solution side.
+
+FILES: scripts/build_pow2_diffs.py, scripts/covering_analysis.py
+DATA:  data/power_of_two_diffs.parquet (741 rows, regenerable)
+
