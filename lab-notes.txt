@@ -88,3 +88,59 @@ Context: p = 2^m + q^n across ~459M primes (up to ~6B).
    q=5 has 0% consecutive hits (cons% = 0) across all m-values.
    Worth investigating which modulus forbids delta_n = 1 for base 5.
 
+
+2026-03-29  l-adic analysis: from valuations to power residue symbols
+----------------------------------------------------------------------
+
+Profiling revealed --ladic was just delegating to --remainder, which runs
+full_profile (GMP factorization + Miller-Rabin + Pollard's rho) on every
+remainder r = p - 2^m.  86% of runtime was GMP primality testing -- entirely
+irrelevant to l-adic structure.  Separated the code paths: --ladic now uses
+Rust v_ell (trial division only), --remainder keeps full_profile.
+
+But the deeper problem: computing v_l(r) is only the first digit of the
+l-adic story.  The actual question for obstruction theory is:
+
+  "Is r an n-th power in Z_l?"
+
+This decomposes into two parts:
+  (1) v_l(r) ≡ 0 mod n  (valuation divisible by n)
+  (2) The unit part r/l^v_l(r) is an n-th power in Z_l*
+
+Part (2) depends on r mod l and the group structure of (Z/lZ)*.
+Specifically, u ∈ Z_l* is an n-th power iff u^((l-1)/gcd(n,l-1)) ≡ 1 mod l.
+The current code computes (1) and completely misses (2).
+
+This also resolves the "why these primes?" question.  The filtration primes
+should NOT be a fixed list {2,3,5,7,11,13}.  They should be EXPONENT-
+DEPENDENT: for exponent n, the informative primes are those l where
+gcd(n, l-1) > 1, i.e., where the n-th power residue symbol is nontrivial:
+  n=2 (square): every odd l works
+  n=3 (cube):   need l ≡ 1 mod 3, so l = 7, 13, 19, 31, 37, 43, ...
+  n=5 (5th pw): need l ≡ 1 mod 5, so l = 11, 31, 41, 61, 71, ...
+
+The prime l=3 can NEVER detect a cube obstruction because |(Z/3Z)*| = 2.
+
+Reference: Burhanuddin thesis (2007), "Some Computational Problems Motivated
+by the Birch and Swinnerton-Dyer Conjecture."  Section 2.2-2.3: the l-adic
+algorithm for computing elliptic curve rational torsion.  Key ideas:
+  - Choice of prime l is determined by discriminant (good reduction)
+  - Hensel lifting provides structured refinement (quadratic convergence)
+  - Discriminant formula: v_l(Δ(f_m)) = (m²-3)(m²-1)/24 · v_l(Δ)
+Not directly applicable (we don't have an elliptic curve) but the methodology
+-- using SageMath's p-adic rings (Zp, Qp) with Hensel lifting for root-
+finding rather than naive trial division -- is what the l-adic analysis
+should be built on.
+
+SageMath p-adic machinery available: Zp(l), Qp(l), capped relative/absolute
+precision, Eisenstein and unramified extensions, Frobenius endomorphisms,
+Witt vectors.  The Rust plugin's role becomes preparing (p, m, r, n) tuples
+efficiently; algebraic analysis happens in SageMath over p-adic rings.
+
+Next steps:
+  - Prototype: for a sample of obstructed primes, compute the n-th power
+    residue symbol at exponent-appropriate primes using SageMath Zp
+  - Compare local obstruction rates vs naive v_l approach
+  - Determine if any obstructed primes are locally unobstructed at all l
+    (these would be the "interesting" primes from a local-global perspective)
+
