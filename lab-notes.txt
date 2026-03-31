@@ -253,3 +253,58 @@ CACHED DATA: /media/extssd/research/dioph.pp/data/covering/
 
 FILES: scripts/mod105_classifier.py, scripts/mod105_second_pass.py
 
+
+2026-03-30  Subgroup exclusion proof for 22 unconditional obstruction classes
+------------------------------------------------------------------------------
+
+THEOREM PROVED: For the 22 residue classes r mod 255255 where the covering
+system {3,5,7,11,13,17} fully covers Z/12Z, every prime p ≡ r (mod 255255)
+is obstructed (k = 0).  This was verified computationally by a finite check
+(no heuristics, no sampling — purely algebraic).
+
+THE PROOF HAS THREE LEMMAS:
+
+Lemma 1 (Multi-coverage): At positions m mod 12 covered by ≥2 covering primes,
+  p - 2^m has ≥2 distinct prime factors, so it's not a prime power.  Trivial.
+
+Lemma 2 (Covering completeness): For each of the 22 classes, the covering
+  system covers all of Z/12Z.  The 8 multi-coverage positions are handled by
+  Lemma 1.  The remaining 4 single-coverage positions (per class) are all
+  covered by q=3 alone (q=11 positions are always multi-covered).
+
+Lemma 3 (Subgroup exclusion): At each single-coverage position m ≡ pos (mod 12)
+  with covering prime q=3, for EVERY m in this congruence class, there exists
+  a blocking prime ℓ such that:
+    (p - 2^m) mod ℓ  ∉  ⟨3⟩ ⊂ (Z/ℓZ)*
+  Since 3^n mod ℓ ∈ ⟨3⟩ for all n, p - 2^m ≠ 3^n.
+
+MECHANISM: 3 is not a primitive root mod certain primes, so ⟨3⟩ is a proper
+subgroup of (Z/ℓZ)*.  The forced residue (p - 2^m) mod ℓ, determined by the
+congruence class r mod 255255, falls outside this subgroup — a contradiction
+if we assume p - 2^m = 3^n.
+
+BLOCKING PRIMES NEEDED: {13, 37, 41, 61, 67, 73, 181, 193}
+  - ℓ=13 handles most cases: ord(3,13) = 3, index 4 (excludes 75% of residues)
+  - ℓ=41: ord(3,41) = 8, index 5 (excludes 80%)
+  - ℓ=61: ord(3,61) = 10, index 6 (excludes 83%)
+  - ℓ=73: ord(3,73) = 12, index 6 (excludes 83%)
+  - ℓ=193: ord(3,193) = 16, index 12 (excludes 92%)
+  - Maximum blocking prime: 193
+
+HARDEST CASE: Class (1,3,2,7,5,15) at m≡2 (mod 12) required 4 blocking
+primes {193, 181, 67, 41} with a combined period of 1320 to close.
+Most positions are blocked by ℓ=13 alone (period 1 — all m blocked at once).
+
+STRUCTURAL OBSERVATION: The single-coverage prime is ALWAYS q=3 (never q=11).
+All q=11 positions have at least one other covering prime (multi-covered).
+This means the proof reduces entirely to showing 3^n can't match at 4
+positions per class, using the subgroup structure of ⟨3⟩ in (Z/ℓZ)*.
+
+VERIFICATION STATISTICS:
+  22 classes × 4 single positions = 88 position-class pairs
+  68/88 blocked by ℓ=13 alone (period 1)
+  20/88 need additional primes (periods up to 1320)
+  Total finite checks: bounded, all pass
+
+FILES: scripts/subgroup_exclusion.py, scripts/proof_structure.py
+
