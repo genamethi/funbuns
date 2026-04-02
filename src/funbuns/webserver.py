@@ -76,6 +76,8 @@ def partitions(
     n: str | None = Query(None),
     page: int = Query(0, ge=0),
     page_size: int = Query(50, ge=1, le=500),
+    sort_by: str = Query("p", pattern="^(p|k)$"),
+    sort_dir: str = Query("asc", pattern="^(asc|desc)$"),
 ):
     from .querydb import parse_filter
     # Validate expressions before hitting the DB
@@ -106,6 +108,7 @@ def partitions(
         k_min=k_min, k_max=k_max,
         q=q, m=m, n=n,
         page=page, page_size=page_size,
+        sort_by=sort_by, sort_dir=sort_dir,
         _count_cache=_count_cache,
     )
 

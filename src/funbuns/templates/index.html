@@ -117,6 +117,13 @@ button.secondary {
   font-size: 11px;
   text-transform: uppercase;
 }
+.results-table th.sortable {
+  cursor: pointer;
+  user-select: none;
+}
+.results-table th.sortable:hover { color: var(--accent2); }
+.results-table th.sort-active { color: var(--accent2); }
+.sort-arrow { margin-left: 4px; font-size: 10px; }
 .results-table td {
   padding: 5px 10px;
   border-bottom: 1px solid var(--border);
@@ -247,8 +254,8 @@ button.secondary {
   <table class="results-table">
     <thead>
       <tr>
-        <th>p</th>
-        <th>k</th>
+        <th class="sortable" id="th-p" onclick="setSort('p')">p<span class="sort-arrow" id="arrow-p">▲</span></th>
+        <th class="sortable" id="th-k" onclick="setSort('k')">k<span class="sort-arrow" id="arrow-k"></span></th>
         <th>decompositions</th>
       </tr>
     </thead>
@@ -269,6 +276,33 @@ button.secondary {
 
 <script>
 let currentPage = 0;
+let sortBy = 'p';
+let sortDir = 'asc';
+
+function setSort(col) {
+  if (sortBy === col) {
+    sortDir = sortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    sortBy = col;
+    sortDir = 'asc';
+  }
+  updateSortHeaders();
+  search(0);
+}
+
+function updateSortHeaders() {
+  for (const col of ['p', 'k']) {
+    const th = document.getElementById('th-' + col);
+    const arrow = document.getElementById('arrow-' + col);
+    if (col === sortBy) {
+      th.classList.add('sort-active');
+      arrow.textContent = sortDir === 'asc' ? '▲' : '▼';
+    } else {
+      th.classList.remove('sort-active');
+      arrow.textContent = '';
+    }
+  }
+}
 
 function parseNum(s) {
   // Support expressions like 10^9, 2^32, 10^6*5 (= 5000000)
@@ -316,6 +350,8 @@ function buildParams(page) {
   if (n !== null) params.set('n', n);
   params.set('page', page);
   params.set('page_size', pageSize);
+  params.set('sort_by', sortBy);
+  params.set('sort_dir', sortDir);
   return params;
 }
 

@@ -436,6 +436,8 @@ class QueryDB:
         n: str | None = None,
         page: int = 0,
         page_size: int = 50,
+        sort_by: str = "p",
+        sort_dir: str = "asc",
         _count_cache: dict | None = None,
     ) -> dict:
         """Flexible partition query with filters and pagination.
@@ -466,17 +468,19 @@ class QueryDB:
         n_clause = f"AND {parse_filter(n, 'd.n_k')}" if n else ""
         has_decomp_filter = any([q_clause, m_clause, n_clause])
 
+        order = f"{sort_by} {sort_dir.upper()}"
+
         if not has_decomp_filter:
             return self._query_fast(p_min, p_max_val, k_clause,
-                                    page, page_size, offset)
+                                    page, page_size, offset, order)
         return self._query_filtered(p_min, p_max_val, k_clause,
                                     q, m, n,
                                     q_clause, m_clause, n_clause,
-                                    page, page_size, offset,
+                                    page, page_size, offset, order,
                                     _count_cache)
 
     def _query_fast(self, p_min, p_max, k_clause,
-                    page, page_size, offset) -> dict:
+                    page, page_size, offset, order) -> dict:
         """Fast path: no decomposition filters, use partition_counts only."""
         total = self.conn.execute(f"""
             SELECT COUNT(*) FROM partition_counts
@@ -488,7 +492,7 @@ class QueryDB:
             SELECT p, k FROM partition_counts
             WHERE {k_clause}
               AND p BETWEEN {p_min} AND {p_max}
-            ORDER BY p
+            ORDER BY {order}
             LIMIT {page_size} OFFSET {offset}
         """).fetchall()
 
@@ -501,7 +505,7 @@ class QueryDB:
     def _query_filtered(self, p_min, p_max, k_clause,
                         q, m, n,
                         q_clause, m_clause, n_clause,
-                        page, page_size, offset,
+                        page, page_size, offset, order,
                         _count_cache) -> dict:
         """Filtered path: scan decompositions once with COUNT(*) OVER()."""
         cache_key = (p_min, p_max, k_clause, q, m, n)
@@ -523,7 +527,7 @@ class QueryDB:
                 SELECT m.p, pc.k
                 FROM matched m
                 JOIN partition_counts pc ON m.p = pc.p
-                ORDER BY m.p
+                ORDER BY {order}
                 LIMIT {page_size} OFFSET {offset}
             """).fetchall()
             total = cached_total
@@ -542,7 +546,7 @@ class QueryDB:
                 SELECT m.p, pc.k, COUNT(*) OVER() AS total
                 FROM matched m
                 JOIN partition_counts pc ON m.p = pc.p
-                ORDER BY m.p
+                ORDER BY {order}
                 LIMIT {page_size} OFFSET {offset}
             """).fetchall()
 
