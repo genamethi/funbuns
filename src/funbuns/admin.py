@@ -21,6 +21,13 @@ def main():
 
     db_sub.add_parser("build", help="Build DuckDB index from parquet (one-time)")
     db_sub.add_parser("sync", help="Sync DuckDB with new parquet blocks")
+    sync_blocks_parser = db_sub.add_parser(
+        "sync-blocks", help="Sync specific blocks by number"
+    )
+    sync_blocks_parser.add_argument(
+        "blocks", type=int, nargs="+", metavar="N",
+        help="Block numbers to sync (e.g. 999 1000 1001)"
+    )
     db_sub.add_parser("status", help="Show database status")
 
     # --- serve ---
@@ -54,6 +61,10 @@ def _handle_db(args):
         db = QueryDB(read_only=False)
         with db:
             db.sync()
+    elif args.db_action == "sync-blocks":
+        db = QueryDB(read_only=False)
+        with db:
+            db.sync_blocks(args.blocks)
     elif args.db_action == "status":
         db = QueryDB(read_only=True)
         with db:

@@ -12,7 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI, Query
 from fastapi.responses import FileResponse, JSONResponse
 
-from .querydb import QueryDB
+from .querydb import QueryDB, filter_min
 
 # Persistent read-only connection, opened at startup
 _db: QueryDB | None = None
@@ -21,15 +21,21 @@ _db: QueryDB | None = None
 # Keyed on (p_min, p_max, k_min, k_max, q, m, n) -> total count.
 _count_cache: dict[tuple, int] = {}
 
+# k-distribution cached at startup; valid for the server lifetime
+# (server must restart after sync/rebuild, which recomputes this).
+_k_dist: list[dict] | None = None
+
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _db
+    global _db, _k_dist
     _db = QueryDB(read_only=True)
     _db.__enter__()
     print(f"DuckDB opened: {_db.db_path}", flush=True)
+    _k_dist = _db.k_distribution()
+    print(f"k-distribution cached ({len(_k_dist)} buckets)", flush=True)
     yield
     if _db is not None:
         _db.__exit__(None, None, None)
@@ -46,7 +52,7 @@ def index():
 
 @app.get("/api/stats")
 def stats():
-    return _db.k_distribution()
+    return _k_dist
 
 
 @app.get("/api/prime/{p}")
@@ -80,8 +86,23 @@ def partitions(
     except ValueError as e:
         return JSONResponse(status_code=400, content={"error": str(e)})
 
+    # Derive tighter p_min from filter expressions.
+    # p = 2^m + q^n, so:
+    #   m_lo  =>  p > 2^m_lo
+    #   q_lo and n_lo (conjunct)  =>  p > q_lo^n_lo
+    effective_p_min = p_min
+    if m:
+        m_lo = filter_min(m)
+        if m_lo is not None:
+            effective_p_min = max(effective_p_min, 2 ** m_lo)
+    if q and n:
+        q_lo = filter_min(q)
+        n_lo = filter_min(n)
+        if q_lo is not None and n_lo is not None:
+            effective_p_min = max(effective_p_min, q_lo ** n_lo)
+
     return _db.partitions_query(
-        p_min=p_min, p_max=p_max,
+        p_min=effective_p_min, p_max=p_max,
         k_min=k_min, k_max=k_max,
         q=q, m=m, n=n,
         page=page, page_size=page_size,

@@ -17,6 +17,28 @@ import polars as pl
 from .utils import get_data_dir
 
 
+def filter_min(expr: str) -> int | None:
+    """Return the minimum value implied by a filter expression, or None.
+
+    Works for exact values, ranges, and lists. Returns None for modular
+    patterns (e.g. 2*i+1) where a useful minimum can't be determined.
+    """
+    expr = expr.strip()
+    expr = re.sub(
+        r'(\d+)\s*\^\s*(\d+)',
+        lambda m: str(int(m.group(1)) ** int(m.group(2))),
+        expr,
+    )
+    if re.fullmatch(r'\d+', expr):
+        return int(expr)
+    m = re.fullmatch(r'(\d+)\s*\.\.\s*(\d+)', expr)
+    if m:
+        return int(m.group(1))
+    if re.fullmatch(r'\d+(\s*,\s*\d+)+', expr):
+        return min(int(x.strip()) for x in expr.split(','))
+    return None
+
+
 def parse_filter(expr: str, column: str) -> str:
     """Parse a filter expression into a SQL WHERE clause fragment.
 
@@ -232,6 +254,78 @@ class QueryDB:
         self._set_meta("last_sync", datetime.now().isoformat())
 
         print(f"Done. {new_count:,} primes, max {new_max:,}", flush=True)
+
+    def sync_blocks(self, block_nums: list[int]):
+        """Sync specific blocks by number into partition_counts.
+
+        For every prime in the specified blocks, recompute k from the
+        full decompositions view (across all parquet files) and upsert
+        into partition_counts.
+        """
+        blocks_dir = get_data_dir() / "blocks"
+        # Build index: block number -> path (parse once)
+        block_index = {}
+        for p in blocks_dir.glob("pp_b*_p*.parquet"):
+            try:
+                bnum = int(p.name.split("_")[1][1:])  # pp_b{N}_p... -> N
+                block_index[bnum] = p
+            except (IndexError, ValueError):
+                continue
+
+        paths = []
+        for num in block_nums:
+            if num not in block_index:
+                print(f"  WARNING: no block file found for b{num}", flush=True)
+                continue
+            paths.append(block_index[num])
+
+        if not paths:
+            print("No block files found. Nothing to sync.", flush=True)
+            return
+
+        file_list = [str(p) for p in paths]
+        print(f"Syncing {len(file_list)} block(s): {', '.join(p.name for p in paths)}", flush=True)
+
+        # Refresh the decompositions view
+        pattern = _parquet_pattern()
+        self.conn.execute(f"""
+            CREATE OR REPLACE VIEW decompositions AS
+            SELECT * FROM read_parquet('{pattern}')
+        """)
+
+        prime_count = self.conn.execute(f"""
+            SELECT COUNT(DISTINCT p) FROM read_parquet({file_list})
+        """).fetchone()[0]
+        print(f"  {prime_count:,} primes in selected blocks", flush=True)
+
+        # Remove stale rows, then reinsert with correct k from all blocks
+        deleted = self.conn.execute(f"""
+            DELETE FROM partition_counts
+            WHERE p IN (SELECT DISTINCT p FROM read_parquet({file_list}))
+        """).fetchone()[0]
+        if deleted:
+            print(f"  Replaced {deleted:,} existing rows", flush=True)
+
+        self.conn.execute(f"""
+            INSERT INTO partition_counts
+            SELECT p, COUNT(*) FILTER (WHERE q_k > 0) AS k
+            FROM decompositions
+            WHERE p IN (SELECT DISTINCT p FROM read_parquet({file_list}))
+            GROUP BY p
+        """)
+
+        # Update metadata
+        new_count = self.conn.execute(
+            "SELECT COUNT(*) FROM partition_counts"
+        ).fetchone()[0]
+        new_max = self.conn.execute(
+            "SELECT MAX(p) FROM partition_counts"
+        ).fetchone()[0]
+        self._set_meta("prime_count", str(new_count))
+        self._set_meta("max_prime", str(new_max))
+        self._set_meta("last_sync", datetime.now().isoformat())
+
+        print(f"Done. {new_count:,} total primes, max {new_max:,}", flush=True)
 
     def status(self):
         """Print database status."""
