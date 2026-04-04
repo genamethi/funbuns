@@ -616,6 +616,75 @@ class QueryDB:
                             orient="row")
 
     # ------------------------------------------------------------------
+    # Poset / planarity
+    # ------------------------------------------------------------------
+
+    def k33_search(self, p_bound: int = 1_000_000):
+        """Search for K_{3,3} among k=3 primes below p_bound.
+
+        For primes with exactly 3 decompositions, their parent set has
+        exactly 3 elements. If 3+ primes share the same parent triple,
+        that's a K_{3,3} subgraph (non-planarity witness).
+
+        Returns list of (frozenset({q1,q2,q3}), [p1,p2,...]) for groups
+        of 3+ primes sharing the same ancestor triple.
+        """
+        from collections import defaultdict
+
+        print(f"K_{{3,3}} search: k=3 primes with p < {p_bound:,}", flush=True)
+
+        rows = self.conn.execute(f"""
+            SELECT d.p, d.q_k AS q
+            FROM decompositions d
+            JOIN partition_counts pc ON d.p = pc.p
+            WHERE pc.k = 3 AND d.q_k > 0 AND d.p < {p_bound}
+            ORDER BY d.p, d.q_k
+        """).fetchall()
+
+        # Build parent sets: p -> {q1, q2, q3}
+        parent_sets: dict[int, set[int]] = defaultdict(set)
+        for p, q in rows:
+            parent_sets[p].add(int(q))
+
+        print(f"  {len(parent_sets)} primes with k=3 below {p_bound:,}", flush=True)
+
+        # Group by parent triple
+        triple_groups: dict[frozenset, list[int]] = defaultdict(list)
+        for p, parents in parent_sets.items():
+            triple_groups[frozenset(parents)].append(int(p))
+
+        # Report all triples and flag K_{3,3} witnesses
+        print(f"  {len(triple_groups)} distinct parent triples", flush=True)
+
+        # Show distribution of group sizes
+        from collections import Counter
+        size_dist = Counter(len(ps) for ps in triple_groups.values())
+        for size in sorted(size_dist):
+            print(f"    size {size}: {size_dist[size]} triples", flush=True)
+
+        witnesses = []
+        for triple, primes in sorted(triple_groups.items(),
+                                      key=lambda x: -len(x[1])):
+            if len(primes) >= 3:
+                witnesses.append((triple, sorted(primes)))
+                ancestors = sorted(triple)
+                print(f"\n  K_{{3,3}} FOUND: ancestors {ancestors}", flush=True)
+                print(f"    descendants ({len(primes)}): {sorted(primes)[:20]}"
+                      f"{'...' if len(primes) > 20 else ''}", flush=True)
+
+        if not witnesses:
+            print("\n  No K_{3,3} found among k=3 primes.", flush=True)
+
+            # Show largest groups as near-misses
+            top = sorted(triple_groups.items(), key=lambda x: -len(x[1]))[:5]
+            if top:
+                print("  Largest groups:", flush=True)
+                for triple, primes in top:
+                    print(f"    {sorted(triple)} -> {sorted(primes)}", flush=True)
+
+        return witnesses
+
+    # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
 

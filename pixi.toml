@@ -40,9 +40,9 @@ psutil = ">=7.2.2,<8"
 polars = ">=1.38.1,<2"
 py-spy = ">=0.4.1,<0.5"
 python = "==3.12"
-sage = "==10.7"
 pytest = ">=9.0.2,<10"
 pytest-mock = ">=3.15.1,<4"
+sage = ">=10.7,<11"
 
 [tool.funbuns]
 buffer_size = 10000
@@ -54,7 +54,7 @@ notebook_port = 8888
 
 [tool.funbuns.directories]
 data_dir = "/media/extssd/research/dioph.pp/data"
-db_path = "/home/erpage159/fluid/research/funbuns/data/funbuns.duckdb"
+db_path = "/media/extssd/research/dioph.pp/data/funbuns.duckdb"
 log_dir = "logs"
 
 

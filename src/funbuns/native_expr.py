@@ -141,6 +141,40 @@ def dominant_exp(expr: pl.Expr) -> pl.Expr:
     )
 
 
+def power_residue_symbol(expr: pl.Expr, ell: int, n: int) -> pl.Expr:
+    """Step 2: n-th power residue symbol u^((l-1)/gcd(n,l-1)) mod l.
+
+    Returns Int64 — the symbol value in μ_{gcd(n,l-1)} ⊂ (Z/lZ)*.
+    Extracts the unit part internally (divides out l from r).
+
+    Compose with v_ell (Step 1) to get the full local test:
+        Step 1: v_ell(r, ell) % n == 0  (valuation compatible)
+        Step 2: power_residue_symbol(r, ell, n) == 1  (unit is n-th power)
+    """
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="power_residue_symbol",
+        args=[expr],
+        is_elementwise=True,
+        kwargs={"ell": ell, "n": n},
+    )
+
+
+def power_residue(expr: pl.Expr, ell: int, n: int) -> pl.Expr:
+    """Full power residue struct (both steps combined).
+
+    Returns a Struct with fields: v_ell, v_mod_n, unit_mod_ell, symbol, is_nth_power.
+    Use power_residue_symbol() + v_ell() for the lean composable approach.
+    """
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="power_residue",
+        args=[expr],
+        is_elementwise=True,
+        kwargs={"ell": ell, "n": n},
+    )
+
+
 def full_profile(expr: pl.Expr, filtration_primes: list[int] | None = None) -> pl.Expr:
     """Full arithmetic profile from a single factorization.
 

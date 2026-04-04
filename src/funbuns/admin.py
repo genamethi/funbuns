@@ -30,6 +30,17 @@ def main():
     )
     db_sub.add_parser("status", help="Show database status")
 
+    # --- poset ---
+    poset_parser = sub.add_parser("poset", help="Poset analysis tools")
+    poset_sub = poset_parser.add_subparsers(dest="poset_action", required=True)
+    planarity_parser = poset_sub.add_parser(
+        "planarity", help="Search for K_{3,3} in r=1 graph"
+    )
+    planarity_parser.add_argument(
+        "--bound", type=int, default=1_000_000, metavar="N",
+        help="Upper bound on p (default: 1000000)"
+    )
+
     # --- serve ---
     serve_parser = sub.add_parser("serve", help="Launch partition browser web server")
     serve_parser.add_argument("--port", type=int, default=None, metavar="PORT",
@@ -44,6 +55,8 @@ def main():
 
     if args.command == "db":
         _handle_db(args)
+    elif args.command == "poset":
+        _handle_poset(args)
     elif args.command == "serve":
         _handle_serve(args)
     elif args.command == "notebook":
@@ -69,6 +82,15 @@ def _handle_db(args):
         db = QueryDB(read_only=True)
         with db:
             db.status()
+
+
+def _handle_poset(args):
+    from .querydb import QueryDB
+
+    if args.poset_action == "planarity":
+        db = QueryDB(read_only=True)
+        with db:
+            db.k33_search(p_bound=args.bound)
 
 
 def _handle_serve(args):

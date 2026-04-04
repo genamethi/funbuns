@@ -220,6 +220,251 @@ fn v_ell(inputs: &[Series], kwargs: VEllKwargs) -> PolarsResult<Series> {
 }
 
 // ---------------------------------------------------------------------------
+// Arithmetic helpers for power residue symbols
+// ---------------------------------------------------------------------------
+
+/// Greatest common divisor (Euclidean algorithm).
+#[inline]
+fn gcd_i64(mut a: i64, mut b: i64) -> i64 {
+    a = a.abs();
+    b = b.abs();
+    while b != 0 {
+        let t = b;
+        b = a % b;
+        a = t;
+    }
+    a
+}
+
+/// Modular exponentiation: base^exp mod modulus.
+/// Uses i128 intermediate to avoid overflow.
+#[inline]
+fn powmod_i64(base: i64, mut exp: i64, modulus: i64) -> i64 {
+    if modulus == 1 { return 0; }
+    let m = modulus as i128;
+    let mut result: i128 = 1;
+    let mut b = (base % modulus) as i128;
+    if b < 0 { b += m; }
+    while exp > 0 {
+        if exp & 1 == 1 {
+            result = result * b % m;
+        }
+        exp >>= 1;
+        if exp > 0 {
+            b = b * b % m;
+        }
+    }
+    result as i64
+}
+
+// ---------------------------------------------------------------------------
+// n-th power residue symbol: the H^0 datum
+//
+// For r ∈ Z and prime l, exponent n ≥ 2:
+//   1. v = v_l(r)                    (l-adic valuation)
+//   2. u = r / l^v                   (unit part, coprime to l)
+//   3. g = gcd(n, l-1)              (index of n-th powers in (Z/lZ)*)
+//   4. symbol = u^((l-1)/g) mod l   (power residue symbol)
+//
+// r is an n-th power in Z_l iff v ≡ 0 mod n AND symbol = 1.
+// (By Hensel's lemma, since l ∤ n for our filtration primes.)
+//
+// The symbol value lives in μ_g ⊂ (Z/lZ)* and records WHICH coset
+// of the n-th powers r belongs to — this is the actual H^0 datum,
+// not just the boolean.
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct PowerResidueKwargs {
+    ell: i64,
+    n: i64,
+}
+
+fn power_residue_output(input_fields: &[Field]) -> PolarsResult<Field> {
+    let _ = input_fields;
+    let fields = vec![
+        Field::new("v_ell".into(), DataType::Int32),
+        Field::new("v_mod_n".into(), DataType::Int32),
+        Field::new("unit_mod_ell".into(), DataType::Int64),
+        Field::new("symbol".into(), DataType::Int64),
+        Field::new("is_nth_power".into(), DataType::Boolean),
+    ];
+    Ok(Field::new("power_residue".into(), DataType::Struct(fields)))
+}
+
+#[polars_expr(output_type_func=power_residue_output)]
+fn power_residue(inputs: &[Series], kwargs: PowerResidueKwargs) -> PolarsResult<Series> {
+    let ca = inputs[0].i64()?;
+    let len = ca.len();
+    let ell = kwargs.ell;
+    let n = kwargs.n;
+
+    // Precompute: g = gcd(n, l-1), exponent for symbol = (l-1)/g
+    let g = gcd_i64(n, ell - 1);
+    let pr_exp = (ell - 1) / g;
+
+    let mut v_vals = Vec::with_capacity(len);
+    let mut vm_vals = Vec::with_capacity(len);
+    let mut unit_vals = Vec::with_capacity(len);
+    let mut sym_vals = Vec::with_capacity(len);
+    let mut is_np_vals = Vec::with_capacity(len);
+
+    for opt_r in ca.into_iter() {
+        let r = opt_r.unwrap_or(0);
+        if r <= 0 {
+            v_vals.push(if r == 0 { -1i32 } else { 0 });
+            vm_vals.push(0i32);
+            unit_vals.push(0i64);
+            sym_vals.push(0i64);
+            is_np_vals.push(false);
+            continue;
+        }
+
+        // l-adic valuation
+        let v = v_ell_scalar(r, ell);
+        let v_mod_n = ((v as i64) % n) as i32;
+
+        // Unit part: r / ell^v (guaranteed coprime to ell)
+        let mut u = r;
+        for _ in 0..v {
+            u /= ell;
+        }
+        let u_mod = ((u % ell) + ell) % ell; // ensure positive
+
+        // Power residue symbol: u^((l-1)/gcd(n,l-1)) mod l
+        let sym = if u_mod == 0 {
+            // Shouldn't happen (u is coprime to ell after dividing out v)
+            0
+        } else {
+            powmod_i64(u_mod, pr_exp, ell)
+        };
+
+        let is_np = v_mod_n == 0 && sym == 1;
+
+        v_vals.push(v);
+        vm_vals.push(v_mod_n);
+        unit_vals.push(u_mod);
+        sym_vals.push(sym);
+        is_np_vals.push(is_np);
+    }
+
+    let fields: Vec<Series> = vec![
+        Series::new("v_ell".into(), v_vals),
+        Series::new("v_mod_n".into(), vm_vals),
+        Series::new("unit_mod_ell".into(), unit_vals),
+        Series::new("symbol".into(), sym_vals),
+        Series::new("is_nth_power".into(), is_np_vals),
+    ];
+
+    StructChunked::from_series("power_residue".into(), len, fields.iter())
+        .map(|ca| ca.into_series())
+}
+
+/// Lean Step 2: just the symbol value u^((l-1)/gcd(n,l-1)) mod l.
+///
+/// Step 1 (v_ell) is already its own function. This computes the unit part
+/// internally (divides out l) and returns the symbol in μ_{gcd(n,l-1)}.
+/// Compose with v_ell in the pipeline to get the full local n-th power test.
+#[polars_expr(output_type=Int64)]
+fn power_residue_symbol(inputs: &[Series], kwargs: PowerResidueKwargs) -> PolarsResult<Series> {
+    let ca = inputs[0].i64()?;
+    let ell = kwargs.ell;
+    let n = kwargs.n;
+    let g = gcd_i64(n, ell - 1);
+    let pr_exp = (ell - 1) / g;
+
+    let out: Int64Chunked = unary_elementwise_values(ca, |r| {
+        if r <= 0 { return 0; }
+        // Extract unit part: divide out all factors of ell
+        let mut u = if r < 0 { -r } else { r };
+        while u % ell == 0 { u /= ell; }
+        let u_mod = u % ell;
+        if u_mod == 0 { return 0; }
+        powmod_i64(u_mod, pr_exp, ell)
+    });
+
+    Ok(out.into_series())
+}
+
+// ---------------------------------------------------------------------------
+// Selmer-based n-th power check
+//
+// For integer r and exponent n: factor r, check if all exponents are
+// divisible by n. The Selmer set S = {l : l | r and v_l(r) % n ≠ 0}
+// determines the obstruction — no arbitrary prime bound needed.
+//
+// Returns:
+//   0  → r is a perfect n-th power (S is empty)
+//   l  → first prime l where v_l(r) % n ≠ 0 (Selmer obstruction)
+//  -1  → degenerate input (r ≤ 0, n ≤ 0)
+// ---------------------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct NthPowerKwargs {
+    n: i64,
+}
+
+#[polars_expr(output_type=Int64)]
+fn nth_power_check(inputs: &[Series], kwargs: NthPowerKwargs) -> PolarsResult<Series> {
+    let ca = inputs[0].i64()?;
+    let n = kwargs.n;
+
+    let out: Int64Chunked = unary_elementwise_values(ca, |r| {
+        if r <= 0 || n <= 0 { return -1; }
+        if n == 1 { return 0; }
+
+        let info = factorize(if r < 0 { -r } else { r });
+
+        for i in 0..info.nfactors {
+            let (p, e) = info.factors[i];
+            if (e as i64) % n != 0 {
+                return p; // Selmer obstruction at this prime
+            }
+        }
+
+        0 // perfect n-th power
+    });
+
+    Ok(out.into_series())
+}
+
+/// Like nth_power_check but returns the n-th root when r is a perfect n-th
+/// power, or 0 when it's not. Useful for checking if the root is prime.
+#[polars_expr(output_type=Int64)]
+fn nth_root_or_zero(inputs: &[Series], kwargs: NthPowerKwargs) -> PolarsResult<Series> {
+    let ca = inputs[0].i64()?;
+    let n = kwargs.n;
+
+    let out: Int64Chunked = unary_elementwise_values(ca, |r| {
+        if r <= 1 || n <= 0 { return 0; }
+        if n == 1 { return r; }
+
+        let info = factorize(if r < 0 { -r } else { r });
+
+        // Check all exponents divisible by n
+        for i in 0..info.nfactors {
+            if (info.factors[i].1 as i64) % n != 0 {
+                return 0; // not a perfect n-th power
+            }
+        }
+
+        // Compute the n-th root: product of p^(e/n)
+        let mut root: i64 = 1;
+        for i in 0..info.nfactors {
+            let (p, e) = info.factors[i];
+            let exp_n = e as i64 / n;
+            for _ in 0..exp_n {
+                root = root.saturating_mul(p);
+            }
+        }
+
+        root
+    });
+
+    Ok(out.into_series())
+}
+
+// ---------------------------------------------------------------------------
 // Number of distinct prime factors: ω(n)
 // ---------------------------------------------------------------------------
 
