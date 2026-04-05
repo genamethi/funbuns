@@ -109,12 +109,16 @@ class PPBatchProcessor:
         return self.results_array[:self.current_row]
 
 
-def worker_batch(start_idx: int, count: int) -> pl.DataFrame:
-    """Module-level worker: generate primes locally, process, return DataFrame.
+def worker_batch(start_idx: int, count: int) -> np.ndarray | None:
+    """Module-level worker: generate primes locally, process, return raw array.
 
     Receives (start_idx, count) — 0-indexed prime indices. Only two
     integers cross the process boundary instead of a pickled list.
     Each worker uses P.unrank to resolve its index range to primes.
+
+    Returns the raw NumPy array (int64, shape (N, 4)) to avoid Arrow IPC
+    serialization overhead on the pickle boundary. The caller constructs
+    the DataFrame on the main side.
     """
     P = Primes()
     first_prime = P.unrank(start_idx)
@@ -125,13 +129,8 @@ def worker_batch(start_idx: int, count: int) -> pl.DataFrame:
     result_array = processor.process_batch(primes)
 
     if result_array.size > 0:
-        return pl.DataFrame(result_array, schema=PARTITION_SCHEMA, orient='row')
-    return pl.DataFrame(schema=PARTITION_SCHEMA)
-
-
-def _worker_star(args):
-    """Unpack (start_idx, count) tuple for apply_async."""
-    return worker_batch(*args)
+        return result_array
+    return None
 
 
 class PPBatchFeeder:
@@ -168,8 +167,13 @@ class PPConsumer:
         self.memory_pct_limit = memory_pct_limit
         self.df_buffer: list[pl.DataFrame] = []
         self.result_count = 0
+        self._last_pressure_check = 0.0
 
     def _memory_pressure(self) -> bool:
+        now = _time.monotonic()
+        if now - self._last_pressure_check < 1.0:
+            return False
+        self._last_pressure_check = now
         try:
             import psutil
             return psutil.virtual_memory().percent / 100.0 > self.memory_pct_limit
@@ -248,49 +252,58 @@ class PPManager:
             # Seed the pipeline
             seed_count = min(self.cores, total_batches)
             for i in range(seed_count):
-                pending.append(pool.apply_async(_worker_star, (batches[i],)))
+                pending.append(pool.apply_async(worker_batch, batches[i]))
             next_idx = seed_count
 
+            cols = list(PARTITION_SCHEMA.keys())
             pbar = tqdm(total=self.num_primes, desc="Prime partition", unit="prime")
 
             while pending:
                 if _interrupt_count >= 2:
-                    # Second interrupt: abandon in-flight
                     abandoned = True
                     interrupted = True
                     break
 
-                # Scan for ANY ready result (avoids head-of-line blocking)
-                ready_idx = None
-                for idx in range(len(pending)):
-                    if pending[idx].ready():
-                        ready_idx = idx
-                        break
+                # Drain ALL ready results in one pass
+                ready_indices = [i for i in range(len(pending)) if pending[i].ready()]
 
-                if ready_idx is None:
+                if not ready_indices:
                     _time.sleep(0.05)  # 20 Hz poll — no busy-wait
                     continue
 
-                ar = pending.pop(ready_idx)
-                results_df = ar.get()  # instant — already ready
+                # Pop from end first to keep indices stable
+                ready_results = [pending.pop(i) for i in reversed(ready_indices)]
 
-                consumer.add_results(results_df)
-                self.primes_processed += self.batch_size
-                self.batches_processed += 1
-                pbar.update(self.batch_size)
-                pbar.set_postfix({
-                    "batches": self.batches_processed,
-                    "results": results_df.height,
-                })
+                for ar in ready_results:
+                    result_array = ar.get()
 
-                # Submit next batch if no interrupt
-                if _interrupt_count == 0 and next_idx < total_batches:
-                    pending.append(
-                        pool.apply_async(_worker_star, (batches[next_idx],))
-                    )
-                    next_idx += 1
-                elif _interrupt_count >= 1 and not interrupted:
-                    # First interrupt: don't submit more, but keep draining
+                    if result_array is not None:
+                        results_df = pl.DataFrame(
+                            {cols[i]: result_array[:, i] for i in range(4)},
+                            schema=PARTITION_SCHEMA,
+                        )
+                        consumer.add_results(results_df)
+                        n_results = result_array.shape[0]
+                    else:
+                        n_results = 0
+
+                    self.primes_processed += self.batch_size
+                    self.batches_processed += 1
+                    pbar.update(self.batch_size)
+                    pbar.set_postfix({
+                        "batches": self.batches_processed,
+                        "results": n_results,
+                    })
+
+                # Refill the pipeline with as many new tasks as we just drained
+                if _interrupt_count == 0:
+                    for _ in range(len(ready_results)):
+                        if next_idx < total_batches:
+                            pending.append(
+                                pool.apply_async(worker_batch, batches[next_idx])
+                            )
+                            next_idx += 1
+                elif not interrupted:
                     interrupted = True
 
             pbar.close()

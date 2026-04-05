@@ -108,17 +108,18 @@ class TestWorkerBatchDispatch:
 
         start_idx = 10
         count = 20
-        df = worker_batch(start_idx, count)
+        result_array = worker_batch(start_idx, count)
+
+        # worker_batch returns raw numpy array (N, 4) or None
+        assert result_array is not None
+        result_primes = sorted(set(result_array[:, 0].tolist()))
 
         P = Primes()
         expected_primes = list(prime_range(int(P.unrank(start_idx)), int(P.unrank(start_idx + count))))
 
-        result_primes = sorted(df["p"].unique().to_list())
         # Every prime in the range should appear in output
         for ep in expected_primes:
-            assert ep in result_primes or any(
-                row[0] == ep for row in df.iter_rows()
-            ), f"Prime {ep} missing from worker_batch output"
+            assert ep in result_primes, f"Prime {ep} missing from worker_batch output"
 
 
 class TestPPConsumerFlush:
