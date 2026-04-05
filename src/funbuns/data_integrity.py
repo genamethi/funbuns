@@ -8,6 +8,8 @@ Capabilities:
 - Coverage gap detection via interval merging (O(B), zero SageMath calls)
 - Completeness validation: Dusart (2010) unconditional bounds as filter,
   PARI prime_pi / P.unrank only when discrepancy exceeds proven error bound
+- Paranoid verification: rolling cumulative index with P.unrank at boundaries,
+  Schoenfeld-bound escalation to targeted prime_range on suspicious gaps
 - Comprehensive diagnosis with fix-command suggestions
 """
 
@@ -451,4 +453,224 @@ def comprehensive_diagnosis(verbose: bool = False) -> Dict:
         "n_coverage_intervals": len(merged),
     }
 
+
+# ---------------------------------------------------------------------------
+# Paranoid verification: exact prime-by-prime completeness checks
+# ---------------------------------------------------------------------------
+
+# PARI Baillie-PSW is proven correct below 2^64. Above this, proof=True is
+# needed for primality claims. All current data (max ~158B) is well under.
+PARI_DETERMINISTIC_LIMIT = 2**64
+
+
+def _schoenfeld_bound(x: float) -> float:
+    """Schoenfeld (1976) bound: |pi(x) - Li(x)| < sqrt(x)*ln(x)/(8*pi).
+
+    Valid for x >= 2657 under RH. At our scale, breaching this is
+    near-certain data loss, not a refutation of RH.
+    """
+    return math.sqrt(x) * math.log(x) / (8.0 * math.pi)
+
+
+def check_paranoid_escalation(observed_count: int, max_prime: int) -> Dict:
+    """Check if observed prime count deviates enough to trigger paranoid mode.
+
+    Uses Schoenfeld bound as threshold. Returns dict with:
+    - trigger_paranoid: bool
+    - reason: "schoenfeld" | "dusart" | None
+    - expected_count: float (Li(x) estimate)
+    - deviation: float
+    """
+    x = float(max_prime)
+    if x < 2657:
+        # Too small for Schoenfeld; use exact check
+        return {"trigger_paranoid": True, "reason": "schoenfeld",
+                "expected_count": 0, "deviation": 0}
+
+    # Li(x) approximation: x/ln(x) * (1 + 1/ln(x) + 2/ln(x)^2)
+    ln_x = math.log(x)
+    inv = 1.0 / ln_x
+    li_estimate = (x * inv) * (1.0 + inv + 2.0 * inv * inv)
+
+    deviation = abs(observed_count - li_estimate)
+    bound = _schoenfeld_bound(x)
+
+    if deviation > bound:
+        return {
+            "trigger_paranoid": True,
+            "reason": "schoenfeld",
+            "expected_count": li_estimate,
+            "deviation": deviation,
+            "bound": bound,
+        }
+
+    # Also check Dusart bounds if available
+    if x >= 88_783:
+        pi_lo, pi_hi = _dusart_pi_bounds(x)
+        if observed_count < pi_lo or (x >= 2_953_652_287 and observed_count > pi_hi):
+            return {
+                "trigger_paranoid": True,
+                "reason": "dusart",
+                "expected_count": li_estimate,
+                "deviation": deviation,
+                "bound": bound,
+            }
+
+    return {
+        "trigger_paranoid": False,
+        "reason": None,
+        "expected_count": li_estimate,
+        "deviation": deviation,
+        "bound": bound,
+    }
+
+
+def paranoid_verify_block(path: Path) -> Dict:
+    """Verify a single block for missing primes.
+
+    For small blocks (test-scale): uses SageMath prime_range for exact
+    enumeration. For production, use paranoid_rolling_verify instead.
+
+    Returns dict with 'missing_primes' list.
+    """
+    from sage.all import prime_range as sage_prime_range
+
+    df = pl.read_parquet(path)
+    data_primes = set(df["p"].unique().to_list())
+
+    min_p = min(data_primes)
+    max_p = max(data_primes)
+
+    # For small ranges, direct enumeration is fine
+    expected = set(int(p) for p in sage_prime_range(min_p, max_p + 1))
+    missing = sorted(expected - data_primes)
+
+    return {"missing_primes": missing, "extra_primes": sorted(data_primes - expected)}
+
+
+def paranoid_verify_range(path: Path, min_p: int, max_p: int) -> Dict:
+    """Verify a parquet file has all primes in [min_p, max_p].
+
+    For small ranges (test-scale): uses SageMath prime_range.
+    Returns dict with 'missing_primes' and 'extra_primes'.
+    """
+    from sage.all import prime_range as sage_prime_range
+
+    df = pl.read_parquet(path)
+    data_primes = set(df["p"].unique().to_list())
+
+    expected = set(int(p) for p in sage_prime_range(min_p, max_p + 1))
+    missing = sorted(expected - data_primes)
+    extra = sorted(data_primes - expected)
+
+    return {"missing_primes": missing, "extra_primes": extra}
+
+
+def paranoid_rolling_verify(verbose: bool = True) -> Dict:
+    """Production paranoid verification using rolling cumulative index.
+
+    Algorithm:
+    1. Walk blocks in sorted order using filename-derived max_p
+    2. Maintain cumulative unique prime count
+    3. At each block boundary: verify P.unrank(cumulative_count) matches
+       next block's min_p (from filename or lazy scan)
+    4. If count deviation exceeds Schoenfeld bound: escalate with
+       targeted prime_range to identify exact missing primes
+    5. Check block isolation: no prime from cur block leaks into neighbors
+
+    Uses filename-derived max_p where possible to avoid full block reads.
+    Falls back to lazy scans for min_p when filenames don't encode it.
+    """
+    from sage.all import Primes, prime_range as sage_prime_range
+
+    infos = sorted_blocks_by_data()
+    if not infos:
+        print("No blocks to verify.")
+        return {"verified": 0, "issues": []}
+
+    P = Primes()
+    cumulative_count = 0
+    issues = []
+    verified_blocks = 0
+    prev_max_p = None
+
+    for i, info in enumerate(infos):
+        if info.num_unique_primes is None:
+            issues.append({"block": info.path.name, "issue": "corrupt/unreadable"})
+            continue
+
+        cur_min_p = info.min_prime
+        cur_max_p = info.max_prime
+        cur_uniq = info.num_unique_primes
+
+        # Boundary check: gap between prev block and current
+        if prev_max_p is not None and cur_min_p is not None:
+            gap = cur_min_p - prev_max_p
+            bound = _natural_gap_bound(prev_max_p)
+            if gap > bound:
+                # Suspicious gap — use unrank to check
+                expected_next = int(P.unrank(cumulative_count))
+                if expected_next != cur_min_p:
+                    # Escalate: find missing primes in the gap
+                    missing_in_gap = [
+                        int(p) for p in sage_prime_range(prev_max_p + 1, cur_min_p)
+                    ]
+                    issues.append({
+                        "block": info.path.name,
+                        "issue": "gap_missing_primes",
+                        "expected_min": expected_next,
+                        "actual_min": cur_min_p,
+                        "missing_count": len(missing_in_gap),
+                    })
+                    if verbose:
+                        print(f"  GAP before {info.path.name}: expected min_p={expected_next}, "
+                              f"got {cur_min_p}, {len(missing_in_gap)} primes missing")
+            elif gap > 0:
+                # Normal gap — verify boundary prime with unrank
+                expected_next = int(P.unrank(cumulative_count))
+                if expected_next != cur_min_p:
+                    issues.append({
+                        "block": info.path.name,
+                        "issue": "boundary_mismatch",
+                        "expected_min": expected_next,
+                        "actual_min": cur_min_p,
+                    })
+                    if verbose:
+                        print(f"  MISMATCH at {info.path.name}: expected min_p={expected_next}, "
+                              f"got {cur_min_p}")
+
+        # Count check with Schoenfeld escalation
+        cumulative_count += cur_uniq
+        if cur_max_p is not None:
+            esc = check_paranoid_escalation(cumulative_count, cur_max_p)
+            if esc["trigger_paranoid"]:
+                issues.append({
+                    "block": info.path.name,
+                    "issue": f"count_deviation_{esc['reason']}",
+                    "observed": cumulative_count,
+                    "expected": esc["expected_count"],
+                    "deviation": esc["deviation"],
+                })
+                if verbose:
+                    print(f"  COUNT DEVIATION at {info.path.name}: "
+                          f"observed={cumulative_count:,}, "
+                          f"expected~{esc['expected_count']:,.0f}, "
+                          f"reason={esc['reason']}")
+
+        prev_max_p = cur_max_p
+        verified_blocks += 1
+
+        if verbose and verified_blocks % 1000 == 0:
+            print(f"  Verified {verified_blocks}/{len(infos)} blocks, "
+                  f"cumulative primes: {cumulative_count:,}")
+
+    if verbose:
+        print(f"\nParanoid verification complete: {verified_blocks} blocks, "
+              f"{cumulative_count:,} cumulative primes, {len(issues)} issues")
+
+    return {
+        "verified": verified_blocks,
+        "cumulative_primes": cumulative_count,
+        "issues": issues,
+    }
 

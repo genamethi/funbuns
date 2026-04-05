@@ -250,13 +250,13 @@ class TestGracefulSIGINT:
         runs_dir.mkdir()
         (tmp_path / "blocks").mkdir()
 
-        # Use enough batches that some complete before SIGINT arrives.
-        # Detection: poll for run parquet files appearing on disk (no
-        # internal monkey-patching — works regardless of implementation).
+        # 10M primes / 1M batch = 10 batches. Each batch takes several
+        # seconds, so SIGINT reliably lands mid-generation. Buffer is 1
+        # so every completed batch flushes a run file immediately.
         script = f"""\
 import os, sys
 os.environ["FUNBUNS_DATA_DIR"] = "{tmp_path}"
-sys.argv = ["funbuns", "-n", "10000", "-b", "1000"]
+sys.argv = ["funbuns", "-n", "10000000", "-b", "1000000"]
 from funbuns.__main__ import main
 main()
 """
@@ -266,24 +266,21 @@ main()
             stderr=subprocess.PIPE,
         )
 
-        # Wait for generation to produce at least one run file, or for
-        # stdout activity indicating batches are being processed.
-        deadline = time.monotonic() + 60
+        # Wait for at least one run file (= one completed batch flush).
+        deadline = time.monotonic() + 120
         while time.monotonic() < deadline:
             if list(runs_dir.glob("*.parquet")):
-                break  # Data is landing on disk
+                break
             if proc.poll() is not None:
-                break  # Process already exited
-            time.sleep(0.2)
+                break
+            time.sleep(0.5)
 
-        # Give a moment for in-flight batches to return, then interrupt
-        time.sleep(0.5)
+        # Send SIGINT while batches are still in-flight
+        time.sleep(1)
         if proc.poll() is None:
             proc.send_signal(signal.SIGINT)
 
-        stdout, stderr = proc.communicate(timeout=30)
-
-        # --- Assertions for the desired graceful-exit feature ---
+        stdout, stderr = proc.communicate(timeout=60)
 
         # 1. Clean exit (0), not a KeyboardInterrupt crash (1) or signal death (-2)
         assert proc.returncode == 0, (

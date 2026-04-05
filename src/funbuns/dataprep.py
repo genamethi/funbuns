@@ -51,13 +51,15 @@ def prepare_prime_powers(n=None, max_power=None, use_bounded=True):
     df = pl.LazyFrame({"1": primes}, schema={"1": pl.Int64})
     
     # Use single lazy expression to compute all powers at once
-    int64_max = 2**63 - 1
-    
+    # Overflow detection via logarithms: k*ln(p) < ln(2^63-1)
+    # Polars .pow() silently wraps Int64, so value-based guards don't work.
+    ln_int64_max = 63.0 * math.log(2.0)
+
     # Build all power expressions
     if use_bounded:
         # Create expressions for all powers with overflow protection
         power_expressions = [
-            pl.when(pl.col("1").pow(k) <= int64_max)
+            pl.when(k * pl.col("1").cast(pl.Float64).log() < ln_int64_max)
             .then(pl.col("1").pow(k))
             .otherwise(0)
             .alias(str(k))

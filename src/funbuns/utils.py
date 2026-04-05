@@ -137,6 +137,9 @@ def get_log_dir() -> Path:
     """Get the log directory path."""
     if log_dir := os.getenv('FUNBUNS_LOG_DIR'):
         p = Path(log_dir)
+    elif data_dir := os.getenv('FUNBUNS_DATA_DIR'):
+        # When data dir is overridden (e.g. tests), put logs under it
+        p = Path(data_dir) / "logs"
     else:
         try:
             config = get_config()
@@ -157,8 +160,13 @@ class JournalWriter:
     via psutil, so crashes and leaks can be diagnosed after the fact.
     """
 
-    def __init__(self, path: Optional[Path] = None):
-        self.path = path or get_log_dir() / "journal.jsonl"
+    def __init__(self, path: Optional[Path] = None, name: Optional[str] = None):
+        if path is not None:
+            self.path = path
+        elif name is not None:
+            self.path = get_log_dir() / f"{name}.jsonl"
+        else:
+            self.path = get_log_dir() / "journal.jsonl"
         self._pid = os.getpid()
 
     @staticmethod
@@ -302,9 +310,11 @@ def append_data(df: pl.DataFrame, buffer_size: int = None, filepath=None, verbos
         verbose: Whether to log incremental file writes
     """
 
-    # Write directly to a new run file in data/runs/ directory
-    runs_dir = get_data_dir() / "runs"
-    runs_dir.mkdir(exist_ok=True)
+    # Ensure both runs/ and blocks/ exist (consistent auto-creation)
+    data_dir = get_data_dir()
+    runs_dir = data_dir / "runs"
+    runs_dir.mkdir(parents=True, exist_ok=True)
+    (data_dir / "blocks").mkdir(parents=True, exist_ok=True)
     # Use microseconds and pid to avoid filename collisions within the same second
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
     pid = os.getpid()

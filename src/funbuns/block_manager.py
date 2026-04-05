@@ -8,9 +8,10 @@ import polars as pl
 from pathlib import Path
 import argparse
 import shutil
+import time
 from typing import List, Optional
 
-from .utils import convert_runs_to_blocks_auto, get_data_dir
+from .utils import convert_runs_to_blocks_auto, get_data_dir, JournalWriter
 from .data_integrity import (
     quick_integrity_report, comprehensive_diagnosis, prefix_check_report,
 )
@@ -305,6 +306,9 @@ class BlockManager:
 
 
 def main():
+    journal = JournalWriter(name="bmgr")
+    t0 = time.monotonic()
+
     parser = argparse.ArgumentParser(description="Prime partition block manager")
     parser.add_argument("--analyze", action="store_true", help="Analyze current organization")
     parser.add_argument("--convert", action="store_true", help="Convert runs to blocks")
@@ -317,6 +321,8 @@ def main():
     parser.add_argument("--integrate-check", action="store_true",
                         help="Integrate runs into blocks and run integrity checks (deletes runs on success)")
     parser.add_argument("--integrity", action="store_true", help="Print quick data integrity report")
+    parser.add_argument("-P", "--paranoid", action="store_true",
+                        help="Enable paranoid verification (with --integrity or --integrate-check)")
     parser.add_argument("--diagnose", action="store_true",
                         help="Full diagnosis: completeness, gaps, overlaps, with fix commands")
     parser.add_argument("--prefix-check", action="store_true",
@@ -332,120 +338,134 @@ def main():
 
     args = parser.parse_args()
 
+    journal.log("bmgr", "start", args=vars(args))
+
     manager = BlockManager(args.data_dir)
 
     ran_action = False
 
-    if args.analyze:
-        analysis = manager.analyze_current_organization()
-        print(f"\nAnalysis complete - found {analysis['total_files']} data files")
-        ran_action = True
+    try:
+        if args.analyze:
+            analysis = manager.analyze_current_organization()
+            print(f"\nAnalysis complete - found {analysis['total_files']} data files")
+            ran_action = True
 
-    if args.convert:
-        convert_runs_to_blocks_auto(target_prime_count=args.block_size)
-        ran_action = True
+        if args.convert:
+            convert_runs_to_blocks_auto(target_prime_count=args.block_size)
+            ran_action = True
 
-    if args.summary:
-        block_files = list(manager.blocks_dir.glob("*.parquet"))
-        use_blocks = len(block_files) > 0
-        manager.show_block_summary(use_blocks=use_blocks)
-        ran_action = True
+        if args.summary:
+            block_files = list(manager.blocks_dir.glob("*.parquet"))
+            use_blocks = len(block_files) > 0
+            manager.show_block_summary(use_blocks=use_blocks)
+            ran_action = True
 
-    if args.show_runs:
-        from .utils import show_run_files_summary
-        show_run_files_summary()
-        ran_action = True
+        if args.show_runs:
+            from .utils import show_run_files_summary
+            show_run_files_summary()
+            ran_action = True
 
-    if args.reconfigure:
-        manager.reconfigure_block_size(args.reconfigure, dry_run=args.dry_run)
-        ran_action = True
+        if args.reconfigure:
+            manager.reconfigure_block_size(args.reconfigure, dry_run=args.dry_run)
+            ran_action = True
 
-    if args.diagnose:
-        comprehensive_diagnosis(verbose=args.verbose)
-        ran_action = True
+        if args.diagnose:
+            comprehensive_diagnosis(verbose=args.verbose)
+            ran_action = True
 
-    if args.integrate_check:
-        print("Integrating runs into blocks and checking integrity...", flush=True)
-        convert_runs_to_blocks_auto(target_prime_count=args.block_size)
-        print("\n=== INTEGRITY SUMMARY ===", flush=True)
-        print(quick_integrity_report())
-        # Compact prefix summary using rank-based check
-        report = prefix_check_report()
-        comp = report["completeness"]
-        if comp["valid_infos"]:
-            print(f"\nCompleteness: {'COMPLETE' if comp['complete'] else 'INCOMPLETE'} "
-                  f"({comp['per_block_sum']:,} per-block sum)", flush=True)
-            if report["gaps"]:
-                print(f"Gaps: {len(report['gaps'])}")
-                for gap in report["gaps"]:
-                    print(f"  {gap['block_a']} -> {gap['block_b']}: "
-                          f"~{gap['est_missing']:,} missing primes")
-            if report["filename_mismatches"]:
-                print(f"Filename mismatches: {len(report['filename_mismatches'])}")
-        ran_action = True
+        if args.integrate_check:
+            print("Integrating runs into blocks and checking integrity...", flush=True)
+            convert_runs_to_blocks_auto(target_prime_count=args.block_size)
+            print("\n=== INTEGRITY SUMMARY ===", flush=True)
+            print(quick_integrity_report())
+            # Compact prefix summary using rank-based check
+            report = prefix_check_report()
+            comp = report["completeness"]
+            if comp["valid_infos"]:
+                print(f"\nCompleteness: {'COMPLETE' if comp['complete'] else 'INCOMPLETE'} "
+                      f"({comp['per_block_sum']:,} per-block sum)", flush=True)
+                if report["gaps"]:
+                    print(f"Gaps: {len(report['gaps'])}")
+                    for gap in report["gaps"]:
+                        print(f"  {gap['block_a']} -> {gap['block_b']}: "
+                              f"~{gap['est_missing']:,} missing primes")
+                if report["filename_mismatches"]:
+                    print(f"Filename mismatches: {len(report['filename_mismatches'])}")
+            if args.paranoid:
+                from .data_integrity import paranoid_rolling_verify
+                print("\n=== PARANOID VERIFICATION ===", flush=True)
+                paranoid_rolling_verify(verbose=args.verbose)
+            ran_action = True
 
-    if args.integrity:
-        print(quick_integrity_report())
-        ran_action = True
+        if args.integrity:
+            print(quick_integrity_report())
+            if args.paranoid:
+                from .data_integrity import paranoid_rolling_verify
+                print("\n=== PARANOID VERIFICATION ===", flush=True)
+                paranoid_rolling_verify(verbose=args.verbose)
+            ran_action = True
 
-    if args.prefix_check:
-        report = prefix_check_report()
-        comp = report["completeness"]
-        if not comp["valid_infos"]:
-            print("No block files found.")
-        else:
-            print("\n=== PREFIX CHECK ===")
-            print(f"Blocks: {len(comp['valid_infos'])}, "
-                  f"Per-block unique sum: {comp['per_block_sum']:,}")
-            if comp["n_overlapping_pairs"] > 0:
-                print(f"  ({comp['n_overlapping_pairs']} overlapping block pairs; "
-                      f"sum overcounts)")
-            print(f"Completeness: {'COMPLETE' if comp['complete'] else 'INCOMPLETE'}")
-            if not comp["complete"]:
-                dusart_lo = comp.get("dusart_lower")
-                if dusart_lo is not None:
-                    print(f"  Dusart bounds: [{int(dusart_lo):,}, "
-                          f"{int(comp['dusart_upper']):,}]")
-                if comp.get("needs_exact"):
-                    print(f"  Count outside Dusart bounds; exact verification needed")
-            if report["gaps"]:
-                print(f"\nGaps ({len(report['gaps'])}):")
-                for gap in report["gaps"][:20]:
-                    print(f"  {gap['block_a']} (max {gap['gap_start']:,}) -> "
-                          f"{gap['block_b']} (min {gap['gap_end']:,}): "
-                          f"~{gap['est_missing']:,} missing primes")
-                if len(report["gaps"]) > 20:
-                    print(f"  ... and {len(report['gaps'])-20} more")
+        if args.prefix_check:
+            report = prefix_check_report()
+            comp = report["completeness"]
+            if not comp["valid_infos"]:
+                print("No block files found.")
             else:
-                print("\nNo gaps detected between blocks.")
-            if report["filename_mismatches"]:
-                print(f"\nFilename/content max(p) mismatches ({len(report['filename_mismatches'])}):")
-                for m in report["filename_mismatches"]:
-                    print(f"  {m['file']}: name p{m['name_max']} vs content max {m['content_max']}")
-            if comp["complete"] and not report["filename_mismatches"]:
-                print("\nPrefix property holds across all blocks.")
-        ran_action = True
+                print("\n=== PREFIX CHECK ===")
+                print(f"Blocks: {len(comp['valid_infos'])}, "
+                      f"Per-block unique sum: {comp['per_block_sum']:,}")
+                if comp["n_overlapping_pairs"] > 0:
+                    print(f"  ({comp['n_overlapping_pairs']} overlapping block pairs; "
+                          f"sum overcounts)")
+                print(f"Completeness: {'COMPLETE' if comp['complete'] else 'INCOMPLETE'}")
+                if not comp["complete"]:
+                    dusart_lo = comp.get("dusart_lower")
+                    if dusart_lo is not None:
+                        print(f"  Dusart bounds: [{int(dusart_lo):,}, "
+                              f"{int(comp['dusart_upper']):,}]")
+                    if comp.get("needs_exact"):
+                        print(f"  Count outside Dusart bounds; exact verification needed")
+                if report["gaps"]:
+                    print(f"\nGaps ({len(report['gaps'])}):")
+                    for gap in report["gaps"][:20]:
+                        print(f"  {gap['block_a']} (max {gap['gap_start']:,}) -> "
+                              f"{gap['block_b']} (min {gap['gap_end']:,}): "
+                              f"~{gap['est_missing']:,} missing primes")
+                    if len(report["gaps"]) > 20:
+                        print(f"  ... and {len(report['gaps'])-20} more")
+                else:
+                    print("\nNo gaps detected between blocks.")
+                if report["filename_mismatches"]:
+                    print(f"\nFilename/content max(p) mismatches ({len(report['filename_mismatches'])}):")
+                    for m in report["filename_mismatches"]:
+                        print(f"  {m['file']}: name p{m['name_max']} vs content max {m['content_max']}")
+                if comp["complete"] and not report["filename_mismatches"]:
+                    print("\nPrefix property holds across all blocks.")
+            ran_action = True
 
-    if args.audit_prefix:
-        res = manager.audit_prefix_first_mismatch()
-        print("\n=== PREFIX FIRST MISMATCH ===")
-        if not res:
-            print("All data primes match Primes.unrank(i) across the prefix.")
-        else:
-            print(f"index={res['index']:,}, data_prime={res['data_prime']}, "
-                  f"expected_prime={res['expected_prime']}")
-        ran_action = True
+        if args.audit_prefix:
+            res = manager.audit_prefix_first_mismatch()
+            print("\n=== PREFIX FIRST MISMATCH ===")
+            if not res:
+                print("All data primes match Primes.unrank(i) across the prefix.")
+            else:
+                print(f"index={res['index']:,}, data_prime={res['data_prime']}, "
+                      f"expected_prime={res['expected_prime']}")
+            ran_action = True
 
-    if args.truncate_from_block is not None:
-        manager.truncate_from_block(args.truncate_from_block, yes=args.yes, dry_run=not args.yes)
-        ran_action = True
+        if args.truncate_from_block is not None:
+            manager.truncate_from_block(args.truncate_from_block, yes=args.yes, dry_run=not args.yes)
+            ran_action = True
 
-    if args.truncate_from_prime is not None:
-        manager.truncate_from_prime(args.truncate_from_prime, yes=args.yes, dry_run=not args.yes)
-        ran_action = True
+        if args.truncate_from_prime is not None:
+            manager.truncate_from_prime(args.truncate_from_prime, yes=args.yes, dry_run=not args.yes)
+            ran_action = True
 
-    if not ran_action:
-        manager.analyze_current_organization()
+        if not ran_action:
+            manager.analyze_current_organization()
+
+    finally:
+        journal.log("bmgr", "end", elapsed_s=round(time.monotonic() - t0, 2))
 
 
 if __name__ == "__main__":

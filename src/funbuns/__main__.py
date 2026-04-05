@@ -7,14 +7,14 @@ funbuns-admin. Block management lives in bmgr (block_manager.py).
 
 import argparse
 import sys
+import time
 import psutil
 from .core import PPManager
-from .utils import setup_logging, get_config, setup_analysis_mode, generate_partition_summary, get_data_dir
+from .utils import (setup_logging, get_config, setup_analysis_mode,
+                    generate_partition_summary, get_data_dir, JournalWriter)
 from .dataprep import prepare_prime_powers
 from .viewer import generate_dashboard
 import polars as pl
-
-#TODO: Rename this from funbuns lol
 
 
 def _check_block_data() -> bool:
@@ -294,14 +294,20 @@ def main():
         cores = psutil.cpu_count(logical=False)
         print(f"Using {cores} workers (physical cores)")
 
-    #See utils.py
     setup_logging()
 
-    # Get configuration and setup analysis mode
-    #See get_config in utils.py
     config = get_config()
-    buffer_size = args.batch_size * 2
+    # Flush buffer is independent of batch size — config-driven
+    # Production: pixi.toml sets buffer_size = 500000
+    # Fallback: 10000 (ensures flushes even in small test runs)
+    buffer_size = config.get('buffer_size', 10_000)
 
+    # Journal for generation runs
+    journal = JournalWriter(name="funbuns")
+    t0 = time.monotonic()
+    journal.log("main", "run_start",
+                num_primes=args.num_primes, batch_size=args.batch_size,
+                cores=cores, buffer_size=buffer_size)
 
     # --init skips the expensive resume scan entirely
     if args.init is not None:
@@ -318,13 +324,38 @@ def main():
         print(f"Running in temporary mode: {data_file}")
 
     # Create PPManager instance and run
-    manager = PPManager(init_p, args.num_primes, args.batch_size, cores, buffer_size, append_func, args.verbose)
-    manager.run_gen()
+    manager = PPManager(init_p, args.num_primes, args.batch_size, cores,
+                        buffer_size=buffer_size, append_data=append_func, verbose=args.verbose)
+    gen_status = manager.run_gen() or {}
 
-    # Integration: --init leaves run files for manual integration via bmgr
-    if args.init is not None:
-        from .utils import get_data_dir
-        runs_dir = get_data_dir() / "runs"
+    elapsed = round(time.monotonic() - t0, 2)
+
+    # Emit shutdown/end journal event
+    if gen_status.get('interrupted'):
+        journal.log("main", "shutdown",
+                    elapsed_s=elapsed,
+                    abandoned=gen_status.get('abandoned', False),
+                    primes_processed=gen_status.get('primes_processed', 0),
+                    primes_not_processed=gen_status.get('primes_not_processed', 0))
+    else:
+        journal.log("main", "run_end",
+                    elapsed_s=elapsed,
+                    primes_processed=gen_status.get('primes_processed', 0))
+
+    # Print resume command if interrupted
+    remaining = gen_status.get('primes_not_processed', 0)
+    if isinstance(remaining, int) and remaining > 0:
+        print(f"\n{remaining:,} primes not processed.")
+        print(f"Resume: funbuns --init {init_p} -n {args.num_primes} "
+              f"-b {args.batch_size}")
+
+    # Integration: skip if interrupted or --init (run files stay for manual review)
+    if gen_status.get('interrupted'):
+        print("Integration skipped (interrupted). Run files preserved in data/runs/.")
+        print("Next: bmgr --integrate-check")
+    elif args.init is not None:
+        from .utils import get_data_dir as _gdd
+        runs_dir = _gdd() / "runs"
         run_files = list(runs_dir.glob("*.parquet")) if runs_dir.exists() else []
         print(f"\nRun files in data/runs/: {len(run_files)}")
         print("Integration skipped (--init mode). Run files need manual review.")

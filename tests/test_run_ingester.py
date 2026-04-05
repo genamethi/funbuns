@@ -207,9 +207,14 @@ class TestRunFileDeletionSafety:
             call_log.append(("delete_run", str(self_path)))
             return original_unlink(self_path, *args, **kwargs)
 
+        def tracking_verify(path):
+            call_log.append(("integrity_check", str(path)))
+            return True
+
         with (
             patch.object(pl.DataFrame, "write_parquet", tracking_write),
             patch.object(Path, "unlink", tracking_unlink),
+            patch("funbuns.run_ingester._verify_block", tracking_verify),
         ):
             integrate_runs_into_blocks(
                 target_prime_count=100,

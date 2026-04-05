@@ -7,6 +7,11 @@ Responsibilities:
 - Append into the last block if it has capacity, else create new blocks of target size
 - Remove processed run files after successful integration
 
+Safety invariants:
+- Old partial blocks are NOT deleted until replacement blocks are verified on disk
+- Run files are NOT deleted until all new blocks pass integrity verification
+- A _verify_block() read-back confirms each block is readable and has expected rows
+
 Notes:
 - Uses content-derived prime ranges for block naming and ordering
 - Coordinates with block_catalog for directory and discovery helpers
@@ -51,6 +56,22 @@ def _estimate_run_batch_size(files: List[Path], memory_limit_mb: int = 512) -> i
     return files_per_batch
 
 
+def _verify_block(path: Path) -> bool:
+    """Verify a newly written block is readable and non-empty.
+
+    Returns True if block can be read and has at least one row.
+    """
+    try:
+        stats = pl.scan_parquet(path).select(
+            pl.len().alias("rows"),
+            pl.col("p").min().alias("min_p"),
+            pl.col("p").max().alias("max_p"),
+        ).collect()
+        return stats["rows"].item() > 0
+    except Exception:
+        return False
+
+
 def integrate_runs_into_blocks(target_prime_count: int = 500_000,
                                verbose: bool = True,
                                delete_run_files: bool = False,
@@ -90,6 +111,7 @@ def integrate_runs_into_blocks(target_prime_count: int = 500_000,
     # Check if there's a partial last block to absorb
     last_block_df = None
     last_block_primes = 0
+    old_partial_block_path: Optional[Path] = None  # kept until replacement verified
     if existing_blocks:
         last_block_path = existing_blocks[-1]
         last_block_meta = pl.scan_parquet(last_block_path).select(
@@ -100,7 +122,8 @@ def integrate_runs_into_blocks(target_prime_count: int = 500_000,
             last_block_df = pl.read_parquet(last_block_path)
             last_block_primes = last_block_uniq
             starting_block_idx -= 1
-            last_block_path.unlink()
+            # DO NOT unlink yet — keep until replacement verified
+            old_partial_block_path = last_block_path
 
     if not run_files and last_block_df is None:
         if verbose:
@@ -125,6 +148,7 @@ def integrate_runs_into_blocks(target_prime_count: int = 500_000,
         file_batches = [[]]  # still need to process the partial last block
 
     processed_files: List[Path] = []
+    newly_written_blocks: List[Path] = []
 
     for batch_idx, file_batch in enumerate(file_batches):
         data_parts = []
@@ -183,6 +207,7 @@ def integrate_runs_into_blocks(target_prime_count: int = 500_000,
                 out_path, compression="zstd", compression_level=1,
                 row_group_size=min(block_df.height, 100_000)
             )
+            newly_written_blocks.append(out_path)
 
         # Advance the block index for the next batch
         if partitions:
@@ -196,7 +221,22 @@ def integrate_runs_into_blocks(target_prime_count: int = 500_000,
             files_done = min((batch_idx + 1) * batch_size, total_files)
             print(f"  Batch {batch_idx + 1}: {files_done}/{total_files} files processed")
 
-    # Cleanup run files
+    # --- Verify all newly written blocks before deleting anything ---
+    for bp in newly_written_blocks:
+        if not _verify_block(bp):
+            raise IOError(
+                f"Verification failed for newly written block {bp.name}. "
+                f"Run files have NOT been deleted."
+            )
+
+    # Safe to remove the old partial block now
+    if old_partial_block_path is not None:
+        try:
+            old_partial_block_path.unlink()
+        except FileNotFoundError:
+            pass
+
+    # Safe to remove run files now
     if delete_run_files:
         for f in processed_files:
             try:

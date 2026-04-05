@@ -6,9 +6,16 @@ Separates infrastructure concerns from the mathematical analysis in __main__.py.
 
 import argparse
 import sys
+import time
+
+from .querydb import QueryDB
+from .utils import JournalWriter
 
 
 def main():
+    journal = JournalWriter(name="admin")
+    t0 = time.monotonic()
+
     parser = argparse.ArgumentParser(
         description="funbuns infrastructure: database, web server, notebook",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -53,19 +60,24 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "db":
-        _handle_db(args)
-    elif args.command == "poset":
-        _handle_poset(args)
-    elif args.command == "serve":
-        _handle_serve(args)
-    elif args.command == "notebook":
-        _handle_notebook(args)
+    journal.log("admin", "start", command=args.command,
+                action=getattr(args, 'db_action', None))
+
+    try:
+        if args.command == "db":
+            _handle_db(args)
+        elif args.command == "poset":
+            _handle_poset(args)
+        elif args.command == "serve":
+            _handle_serve(args)
+        elif args.command == "notebook":
+            _handle_notebook(args)
+    finally:
+        journal.log("admin", "end",
+                    elapsed_s=round(time.monotonic() - t0, 2))
 
 
 def _handle_db(args):
-    from .querydb import QueryDB
-
     if args.db_action == "build":
         db = QueryDB(read_only=False)
         with db:

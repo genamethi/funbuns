@@ -9,12 +9,49 @@ For each prime p:
 Workers receive (start_idx, count) as 0-indexed prime indices. Each worker
 resolves its range via P.unrank and generates primes locally. The feeder
 does no prime generation — just one prime_pi call then arithmetic.
+
+Interrupt handling:
+  - Workers ignore SIGINT so they finish cleanly.
+  - First Ctrl-C: stop dispatching, drain in-flight workers, flush, exit.
+  - Second Ctrl-C: abandon in-flight, flush collected results, exit.
+  Both paths emit a shutdown event and print a resume command.
 """
 
 from sage.all import prime_range, Primes, prime_pi
+import multiprocessing as mp
 import polars as pl
 import numpy as np
+import signal
+import time as _time
 from .utils import PARTITION_SCHEMA, PARTITION_DISTRIBUTION  # noqa: F401
+
+try:
+    mp.set_start_method('spawn')
+except RuntimeError:
+    pass  # already set (e.g. by test runner or prior import)
+
+
+# ---------------------------------------------------------------------------
+# Signal handling helpers (module-level for pickling)
+# ---------------------------------------------------------------------------
+
+_interrupt_count = 0
+
+
+def _sigint_handler(signum, frame):
+    """Count interrupts without raising KeyboardInterrupt."""
+    global _interrupt_count
+    _interrupt_count += 1
+    if _interrupt_count == 1:
+        print("\nInterrupt received — finishing in-flight batches. "
+              "Press Ctrl-C again to abandon them.", flush=True)
+    elif _interrupt_count >= 2:
+        print("\nSecond interrupt — abandoning in-flight batches.", flush=True)
+
+
+def _worker_ignore_sigint():
+    """Pool initializer: make workers immune to SIGINT."""
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
 class PPBatchProcessor:
@@ -93,7 +130,7 @@ def worker_batch(start_idx: int, count: int) -> pl.DataFrame:
 
 
 def _worker_star(args):
-    """Unpack (start_idx, count) tuple for imap_unordered."""
+    """Unpack (start_idx, count) tuple for apply_async."""
     return worker_batch(*args)
 
 
@@ -161,7 +198,11 @@ class PPConsumer:
 
 
 class PPManager:
-    """Coordinates parallel prime power partition computation."""
+    """Coordinates parallel prime power partition computation.
+
+    Returns a status dict from run_gen() with ``interrupted`` (bool)
+    and ``primes_not_processed`` so the caller can print a resume command.
+    """
 
     def __init__(self, init_p, num_primes, batch_size, cores, buffer_size, append_data, verbose=False):
         self.init_p = init_p or 2
@@ -175,40 +216,119 @@ class PPManager:
         self.primes_processed = 0
 
     def run_gen(self):
-        import multiprocessing as mp
+        global _interrupt_count
         from tqdm import tqdm
 
         feeder = PPBatchFeeder(self.init_p, self.num_primes, self.batch_size, self.verbose)
         consumer = PPConsumer(self.buffer_size, self.append_data)
 
         print(f"Processing {self.num_primes} primes starting from {self.init_p}")
-        print(f"Batch size: {self.batch_size}, workers: {self.cores}")
+        print(f"Batch size: {self.batch_size}, workers: {self.cores}, "
+              f"flush buffer: {self.buffer_size}")
 
-        mp.set_start_method('spawn', force=True)
+        batches = list(feeder.generate_batches())
+        total_batches = len(batches)
 
-        with mp.Pool(self.cores) as pool:
+        # Install signal handler; workers will ignore SIGINT via initializer
+        _interrupt_count = 0
+        old_handler = signal.signal(signal.SIGINT, _sigint_handler)
+
+        pool = mp.Pool(self.cores, initializer=_worker_ignore_sigint)
+        interrupted = False
+        abandoned = False
+
+        try:
             self.batches_processed = 0
             self.primes_processed = 0
 
-            # imap_unordered: all workers busy, results yielded as they complete
-            batches = list(feeder.generate_batches())
-            with tqdm(total=self.num_primes, desc="Prime partition", unit="prime") as pbar:
-                for results_df in pool.imap_unordered(
-                    _worker_star, batches
-                ):
-                    consumer.add_results(results_df)
+            # Sliding window: keep at most self.cores tasks in-flight
+            pending = []  # list of AsyncResult
+            next_idx = 0
 
-                    self.primes_processed += self.batch_size
-                    self.batches_processed += 1
-                    pbar.update(self.batch_size)
-                    pbar.set_postfix({
-                        "batches": self.batches_processed,
-                        "results": results_df.height,
-                    })
+            # Seed the pipeline
+            seed_count = min(self.cores, total_batches)
+            for i in range(seed_count):
+                pending.append(pool.apply_async(_worker_star, (batches[i],)))
+            next_idx = seed_count
 
-        consumer.finalize()
+            pbar = tqdm(total=self.num_primes, desc="Prime partition", unit="prime")
 
-        print(f"\nCompleted {self.primes_processed} primes in {self.batches_processed} batches")
+            while pending:
+                if _interrupt_count >= 2:
+                    # Second interrupt: abandon in-flight
+                    abandoned = True
+                    interrupted = True
+                    break
+
+                # Scan for ANY ready result (avoids head-of-line blocking)
+                ready_idx = None
+                for idx in range(len(pending)):
+                    if pending[idx].ready():
+                        ready_idx = idx
+                        break
+
+                if ready_idx is None:
+                    _time.sleep(0.05)  # 20 Hz poll — no busy-wait
+                    continue
+
+                ar = pending.pop(ready_idx)
+                results_df = ar.get()  # instant — already ready
+
+                consumer.add_results(results_df)
+                self.primes_processed += self.batch_size
+                self.batches_processed += 1
+                pbar.update(self.batch_size)
+                pbar.set_postfix({
+                    "batches": self.batches_processed,
+                    "results": results_df.height,
+                })
+
+                # Submit next batch if no interrupt
+                if _interrupt_count == 0 and next_idx < total_batches:
+                    pending.append(
+                        pool.apply_async(_worker_star, (batches[next_idx],))
+                    )
+                    next_idx += 1
+                elif _interrupt_count >= 1 and not interrupted:
+                    # First interrupt: don't submit more, but keep draining
+                    interrupted = True
+
+            pbar.close()
+
+        finally:
+            if abandoned:
+                pool.terminate()
+            else:
+                pool.close()
+            pool.join()
+
+            # Restore original handler before any further work
+            signal.signal(signal.SIGINT, old_handler)
+
+            # Flush whatever we collected
+            consumer.finalize()
+
+        remaining = self.num_primes - self.primes_processed
+
+        if interrupted:
+            print(f"\nShutdown: processed {self.primes_processed:,} of "
+                  f"{self.num_primes:,} primes "
+                  f"({self.batches_processed}/{total_batches} batches)"
+                  + (" [abandoned in-flight]" if abandoned else " [drained in-flight]"))
+        else:
+            print(f"\nCompleted {self.primes_processed:,} primes "
+                  f"in {self.batches_processed} batches")
+
+        return {
+            'interrupted': interrupted,
+            'abandoned': abandoned,
+            'primes_processed': self.primes_processed,
+            'primes_not_processed': remaining,
+            'batches_processed': self.batches_processed,
+            'total_batches': total_batches,
+            'init_p': self.init_p,
+            'batch_size': self.batch_size,
+        }
 
     def get_status(self):
         return {
