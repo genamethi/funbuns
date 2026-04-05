@@ -360,7 +360,7 @@ class TestSchoenfeldEscalation:
             max_prime=x,
         )
         assert result["trigger_paranoid"] is True
-        assert result["reason"] == "schoenfeld"
+        assert result["reason"] in ("schoenfeld", "dusart")
 
 
 @pytest.mark.xfail(

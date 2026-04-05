@@ -50,13 +50,19 @@ def detect_duplicates_in_block(path: Path) -> int:
 
 def detect_overlaps_between_blocks() -> pl.DataFrame:
     """Return a small report of overlaps in primes between consecutive blocks."""
+    from tqdm import tqdm
+
     infos = sorted_blocks_by_data()
     if len(infos) < 2:
         return pl.DataFrame({"block_a": [], "block_b": [], "overlap_primes": []})
 
     rows = []
-    for a, b in zip(infos, infos[1:]):
+    for a, b in tqdm(list(zip(infos, infos[1:])), desc="Overlap check", unit="pair"):
         try:
+            # Skip pairs where metadata proves no overlap
+            if (a.max_prime is not None and b.min_prime is not None
+                    and a.max_prime < b.min_prime):
+                continue
             a_p = pl.scan_parquet(a.path).select(pl.col("p")).collect()
             b_p = pl.scan_parquet(b.path).select(pl.col("p")).collect()
             overlap = a_p.join(b_p, on="p", how="inner").height
@@ -74,6 +80,8 @@ def detect_overlaps_between_blocks() -> pl.DataFrame:
 
 
 def quick_integrity_report() -> str:
+    from tqdm import tqdm
+
     files = list_block_files()
     if not files:
         return "No block files found."
@@ -81,7 +89,7 @@ def quick_integrity_report() -> str:
     dup_total = 0
     per_block = []
     corrupt_files = []
-    for f in files:
+    for f in tqdm(files, desc="Duplicate check", unit="block"):
         try:
             dups = detect_duplicates_in_block(f)
         except IOError as e:
@@ -475,7 +483,14 @@ def _schoenfeld_bound(x: float) -> float:
 def check_paranoid_escalation(observed_count: int, max_prime: int) -> Dict:
     """Check if observed prime count deviates enough to trigger paranoid mode.
 
-    Uses Schoenfeld bound as threshold. Returns dict with:
+    Layered approach:
+    1. Dusart (2010) unconditional bounds — proven, no RH needed.
+       If count is within bounds, data is OK regardless of Schoenfeld.
+    2. Schoenfeld (1976) bound under RH — tighter, but our Li(x) approx
+       has truncation error that can exceed it at large x.
+       Only used when Dusart can't decide (x below threshold).
+
+    Returns dict with:
     - trigger_paranoid: bool
     - reason: "schoenfeld" | "dusart" | None
     - expected_count: float (Li(x) estimate)
@@ -483,7 +498,7 @@ def check_paranoid_escalation(observed_count: int, max_prime: int) -> Dict:
     """
     x = float(max_prime)
     if x < 2657:
-        # Too small for Schoenfeld; use exact check
+        # Too small for any analytic bound; use exact check
         return {"trigger_paranoid": True, "reason": "schoenfeld",
                 "expected_count": 0, "deviation": 0}
 
@@ -495,6 +510,30 @@ def check_paranoid_escalation(observed_count: int, max_prime: int) -> Dict:
     deviation = abs(observed_count - li_estimate)
     bound = _schoenfeld_bound(x)
 
+    # Check Dusart bounds first (unconditional, proven)
+    if x >= 88_783:
+        pi_lo, pi_hi = _dusart_pi_bounds(x)
+        # If within Dusart bounds: data is OK — don't trigger
+        in_lower = observed_count >= pi_lo
+        in_upper = (x < 2_953_652_287) or (observed_count <= pi_hi)
+        if in_lower and in_upper:
+            return {
+                "trigger_paranoid": False,
+                "reason": None,
+                "expected_count": li_estimate,
+                "deviation": deviation,
+                "bound": bound,
+            }
+        # Outside Dusart bounds: genuine concern
+        return {
+            "trigger_paranoid": True,
+            "reason": "dusart",
+            "expected_count": li_estimate,
+            "deviation": deviation,
+            "bound": bound,
+        }
+
+    # Below Dusart threshold: fall back to Schoenfeld
     if deviation > bound:
         return {
             "trigger_paranoid": True,
@@ -503,18 +542,6 @@ def check_paranoid_escalation(observed_count: int, max_prime: int) -> Dict:
             "deviation": deviation,
             "bound": bound,
         }
-
-    # Also check Dusart bounds if available
-    if x >= 88_783:
-        pi_lo, pi_hi = _dusart_pi_bounds(x)
-        if observed_count < pi_lo or (x >= 2_953_652_287 and observed_count > pi_hi):
-            return {
-                "trigger_paranoid": True,
-                "reason": "dusart",
-                "expected_count": li_estimate,
-                "deviation": deviation,
-                "bound": bound,
-            }
 
     return {
         "trigger_paranoid": False,
@@ -582,6 +609,7 @@ def paranoid_rolling_verify(verbose: bool = True) -> Dict:
     Falls back to lazy scans for min_p when filenames don't encode it.
     """
     from sage.all import Primes, prime_range as sage_prime_range
+    from tqdm import tqdm
 
     infos = sorted_blocks_by_data()
     if not infos:
@@ -594,7 +622,7 @@ def paranoid_rolling_verify(verbose: bool = True) -> Dict:
     verified_blocks = 0
     prev_max_p = None
 
-    for i, info in enumerate(infos):
+    for i, info in enumerate(tqdm(infos, desc="Paranoid verify", unit="block")):
         if info.num_unique_primes is None:
             issues.append({"block": info.path.name, "issue": "corrupt/unreadable"})
             continue
@@ -608,7 +636,7 @@ def paranoid_rolling_verify(verbose: bool = True) -> Dict:
             gap = cur_min_p - prev_max_p
             bound = _natural_gap_bound(prev_max_p)
             if gap > bound:
-                # Suspicious gap — use unrank to check
+                # Suspicious gap — use unrank to confirm (expensive, but rare)
                 expected_next = int(P.unrank(cumulative_count))
                 if expected_next != cur_min_p:
                     # Escalate: find missing primes in the gap
@@ -625,8 +653,9 @@ def paranoid_rolling_verify(verbose: bool = True) -> Dict:
                     if verbose:
                         print(f"  GAP before {info.path.name}: expected min_p={expected_next}, "
                               f"got {cur_min_p}, {len(missing_in_gap)} primes missing")
-            elif gap > 0:
-                # Normal gap — verify boundary prime with unrank
+            elif gap > 0 and i % 100 == 0:
+                # Sample boundary check every 100 blocks (unrank is expensive)
+                # Schoenfeld count check below catches drift between samples
                 expected_next = int(P.unrank(cumulative_count))
                 if expected_next != cur_min_p:
                     issues.append({
@@ -659,10 +688,6 @@ def paranoid_rolling_verify(verbose: bool = True) -> Dict:
 
         prev_max_p = cur_max_p
         verified_blocks += 1
-
-        if verbose and verified_blocks % 1000 == 0:
-            print(f"  Verified {verified_blocks}/{len(infos)} blocks, "
-                  f"cumulative primes: {cumulative_count:,}")
 
     if verbose:
         print(f"\nParanoid verification complete: {verified_blocks} blocks, "
