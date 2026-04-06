@@ -471,6 +471,26 @@ def comprehensive_diagnosis(verbose: bool = False) -> Dict:
 PARI_DETERMINISTIC_LIMIT = 2**64
 
 
+def set_proof_for_regime(max_p: int) -> bool:
+    """Set SageMath arithmetic proof level based on data regime.
+
+    Below 2^64, PARI B-PSW is deterministic — all block manager integrity
+    reduces to gap/continuity checks. No primality proofs needed.
+    Above 2^64, enables proof=True (may be slow; issue a warning).
+
+    Returns True if proof=True was set (64-bit regime).
+    """
+    from sage.structure.proof.proof import proof
+    if max_p < PARI_DETERMINISTIC_LIMIT:
+        proof.arithmetic(False)
+        return False
+    else:
+        proof.arithmetic(True)
+        print(f"WARNING: max prime {max_p} exceeds 2^64 — enabling primality proofs. "
+              "This may be slow.", flush=True)
+        return True
+
+
 def _schoenfeld_bound(x: float) -> float:
     """Schoenfeld (1976) bound: |pi(x) - Li(x)| < sqrt(x)*ln(x)/(8*pi).
 

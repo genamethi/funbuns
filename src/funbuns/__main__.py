@@ -346,8 +346,7 @@ def main():
     remaining = gen_status.get('primes_not_processed', 0)
     if isinstance(remaining, int) and remaining > 0:
         print(f"\n{remaining:,} primes not processed.")
-        print(f"Resume: funbuns --init {init_p} -n {args.num_primes} "
-              f"-b {args.batch_size}")
+        print(f"Resume: funbuns -n {remaining} -b {args.batch_size}")
 
     # Integration: skip if interrupted or --init (run files stay for manual review)
     if gen_status.get('interrupted'):

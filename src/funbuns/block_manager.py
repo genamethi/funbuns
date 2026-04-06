@@ -14,6 +14,7 @@ from typing import List, Optional
 from .utils import convert_runs_to_blocks_auto, get_data_dir, JournalWriter
 from .data_integrity import (
     quick_integrity_report, comprehensive_diagnosis, prefix_check_report,
+    set_proof_for_regime,
 )
 from .block_catalog import sorted_blocks_by_data
 
@@ -321,7 +322,7 @@ def main():
     parser.add_argument("--integrate-check", action="store_true",
                         help="Integrate runs into blocks and run integrity checks (deletes runs on success)")
     parser.add_argument("--integrity", action="store_true", help="Print quick data integrity report")
-    parser.add_argument("-P", "--paranoid", action="store_true",
+    parser.add_argument("-p", "--paranoid", action="store_true",
                         help="Enable paranoid verification (with --integrity or --integrate-check)")
     parser.add_argument("--diagnose", action="store_true",
                         help="Full diagnosis: completeness, gaps, overlaps, with fix commands")
@@ -341,6 +342,15 @@ def main():
     journal.log("bmgr", "start", args=vars(args))
 
     manager = BlockManager(args.data_dir)
+
+    # Set proof context for the dataset regime. Below 2^64, PARI B-PSW is
+    # deterministic — all integrity reduces to gap/continuity checks.
+    infos = sorted_blocks_by_data()
+    if infos:
+        dataset_max_p = max(i.max_prime for i in infos if i.max_prime is not None)
+        set_proof_for_regime(dataset_max_p)
+    else:
+        set_proof_for_regime(0)  # no data — proof=False is fine
 
     ran_action = False
 
