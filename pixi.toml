@@ -45,7 +45,7 @@ pytest-mock = ">=3.15.1,<4"
 sage = ">=10.7,<11"
 
 [tool.funbuns]
-buffer_size = 500000
+buffer_size = 10_000_000
 small_primes_filename = "small_primes.parquet"
 lim_sm_p = 100000
 max_power = 64

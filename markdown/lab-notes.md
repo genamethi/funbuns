@@ -8,7 +8,6 @@ Append new findings at the end with dates.
 2026-03-18  Local-Global Periodicity: q-chains and fixed-modulus obstructions
 -----------------------------------------------------------------------------
 
-Context: p = 2^m + q^n across ~459M primes (up to ~6B).
 
 1. BIPARTITE (n, m) ADJACENCY FOR q=3
 

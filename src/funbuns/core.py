@@ -54,6 +54,21 @@ def _worker_ignore_sigint():
     signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
+# TODO: Covering system pre-screening (research in progress)
+#
+# The Erdős-type covering system structure (see project_covering_systems.md)
+# implies that for many m values, q_cand = p - 2^m is divisible by small
+# primes determined by (p mod M, m mod ord(2, ℓ)) for a modulus M.
+# The {3, 5, 7} backbone alone covers all of Z/12Z, and the mod-255255
+# classifier identifies 22 unconditional obstruction classes.
+#
+# This structure could allow skipping is_prime_power() calls for m values
+# where the covering system already determines the outcome. The exact
+# mechanism (CRT-based residue lookup, precomputed bitmasks, or direct
+# modular arithmetic) is TBD pending further mathematical analysis.
+# See: sage.arith.misc (CRT, multiplicative_order, etc.)
+
+
 class PPBatchProcessor:
     """Worker class for processing prime batches using pre-allocated arrays."""
 
@@ -256,7 +271,12 @@ class PPManager:
             next_idx = seed_count
 
             cols = list(PARTITION_SCHEMA.keys())
-            pbar = tqdm(total=self.num_primes, desc="Prime partition", unit="prime")
+            pbar = tqdm(total=self.num_primes, desc="Prime partition",
+                        unit="prime", smoothing=0)
+
+            # Rolling 60s throughput window (complements tqdm's cumulative avg)
+            _rate_window_start = _time.monotonic()
+            _rate_window_primes = 0
 
             while pending:
                 if _interrupt_count >= 2:
@@ -289,11 +309,19 @@ class PPManager:
 
                     self.primes_processed += self.batch_size
                     self.batches_processed += 1
+                    _rate_window_primes += self.batch_size
                     pbar.update(self.batch_size)
-                    pbar.set_postfix({
-                        "batches": self.batches_processed,
-                        "results": n_results,
-                    })
+
+                    now = _time.monotonic()
+                    window_elapsed = now - _rate_window_start
+                    if window_elapsed >= 60.0:
+                        _rate_window_start = now
+                        _rate_window_primes = 0
+                        window_elapsed = 0.001
+                    pbar.set_postfix_str(
+                        f"{self.batches_processed}/{total_batches} batches | "
+                        f"{_rate_window_primes / max(window_elapsed, 0.001):.0f} prime/s (60s)"
+                    )
 
                 # Refill the pipeline with as many new tasks as we just drained
                 if _interrupt_count == 0:
