@@ -218,7 +218,9 @@ class QueryDB:
         ).fetchone()[0]
         self._set_meta("max_prime", str(max_p))
 
-        print(f"Done. Max prime: {max_p:,}", flush=True)
+        print(f"Done. {row_count:,} primes, max {max_p:,}", flush=True)
+
+        return {"n_primes": row_count, "max_prime": max_p}
 
     def sync(self, parquet_pattern: str = None):
         """Incremental: append primes beyond the current max."""
@@ -254,6 +256,8 @@ class QueryDB:
         self._set_meta("last_sync", datetime.now().isoformat())
 
         print(f"Done. {new_count:,} primes, max {new_max:,}", flush=True)
+
+        return {"n_primes": new_count, "max_prime": new_max}
 
     def sync_blocks(self, block_nums: list[int]):
         """Sync specific blocks by number into partition_counts.

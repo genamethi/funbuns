@@ -65,7 +65,7 @@ def main():
 
     try:
         if args.command == "db":
-            _handle_db(args)
+            _handle_db(args, journal)
         elif args.command == "poset":
             _handle_poset(args)
         elif args.command == "serve":
@@ -77,15 +77,16 @@ def main():
                     elapsed_s=round(time.monotonic() - t0, 2))
 
 
-def _handle_db(args):
+def _handle_db(args, journal):
+    stats = None
     if args.db_action == "build":
         db = QueryDB(read_only=False)
         with db:
-            db.build()
+            stats = db.build()
     elif args.db_action == "sync":
         db = QueryDB(read_only=False)
         with db:
-            db.sync()
+            stats = db.sync()
     elif args.db_action == "sync-blocks":
         db = QueryDB(read_only=False)
         with db:
@@ -94,6 +95,9 @@ def _handle_db(args):
         db = QueryDB(read_only=True)
         with db:
             db.status()
+    if stats:
+        journal.log("admin", "dataset_summary",
+                    action=args.db_action, **stats)
 
 
 def _handle_poset(args):

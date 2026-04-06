@@ -471,24 +471,25 @@ def comprehensive_diagnosis(verbose: bool = False) -> Dict:
 PARI_DETERMINISTIC_LIMIT = 2**64
 
 
-def set_proof_for_regime(max_p: int) -> bool:
-    """Set SageMath arithmetic proof level based on data regime.
+def check_proof_regime(max_p: int) -> bool:
+    """Check whether data exceeds the PARI B-PSW deterministic limit.
 
-    Below 2^64, PARI B-PSW is deterministic — all block manager integrity
-    reduces to gap/continuity checks. No primality proofs needed.
-    Above 2^64, enables proof=True (may be slow; issue a warning).
+    Below 2^64, PARI B-PSW (proof=False) is deterministic — all block
+    manager integrity reduces to gap/continuity checks. No primality
+    proofs needed.
 
-    Returns True if proof=True was set (64-bit regime).
+    Above 2^64, individual is_prime / is_prime_power calls would need
+    proof=True to be trustworthy. This function warns but does not set
+    global state — proof=True is passed as a named argument to specific
+    SageMath integer methods when needed.
+
+    Returns True if data exceeds 2^64 (proof regime).
     """
-    from sage.structure.proof.proof import proof
-    if max_p < PARI_DETERMINISTIC_LIMIT:
-        proof.arithmetic(False)
-        return False
-    else:
-        proof.arithmetic(True)
-        print(f"WARNING: max prime {max_p} exceeds 2^64 — enabling primality proofs. "
-              "This may be slow.", flush=True)
+    if max_p >= PARI_DETERMINISTIC_LIMIT:
+        print(f"WARNING: max prime {max_p} exceeds 2^64 — primality checks in "
+              "this regime require proof=True on individual calls.", flush=True)
         return True
+    return False
 
 
 def _schoenfeld_bound(x: float) -> float:

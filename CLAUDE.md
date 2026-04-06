@@ -95,11 +95,19 @@ pixi run build-native            # cargo build --release
 
 ## Data
 
-- **Block parquet files**: 2675 files at `/media/extssd/research/dioph.pp/data/blocks/pp_b*.parquet`
+Latest cached stats (logged as `dataset_summary` events after each
+`bmgr --integrate-check` and `sync-db`):
+```
+jq -s '[.[] | select(.event=="dataset_summary")] | last' logs/bmgr.jsonl
+jq -s '[.[] | select(.event=="dataset_summary")] | last' logs/admin.jsonl
+```
+
+- **Block parquet files**: `/media/extssd/research/dioph.pp/data/blocks/pp_b*.parquet`
   - Schema: `{p: u64, m_k: u32, n_k: u32, q_k: u64}`
-  - ~1.17 billion primes indexed
   - Obstructed primes have q_k = 0
-- **DuckDB**: `data/funbuns.duckdb` (12 GB)
+  - 2026-03-0?: 2,675 blocks, ~1.17B primes
+  - 2026-04-06: 20,289 blocks, ~10.1B primes, max p ≈ 254.7B
+- **DuckDB**: `data/funbuns.duckdb`
   - `partition_counts` TABLE (indexed): p, k
   - `decompositions` VIEW: zero-copy scan over parquet files
   - Temp directory on SSD: `/media/extssd/research/dioph.pp/data/duckdb_tmp/`

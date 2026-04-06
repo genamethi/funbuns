@@ -14,7 +14,7 @@ from typing import List, Optional
 from .utils import convert_runs_to_blocks_auto, get_data_dir, JournalWriter
 from .data_integrity import (
     quick_integrity_report, comprehensive_diagnosis, prefix_check_report,
-    set_proof_for_regime,
+    check_proof_regime,
 )
 from .block_catalog import sorted_blocks_by_data
 
@@ -343,14 +343,12 @@ def main():
 
     manager = BlockManager(args.data_dir)
 
-    # Set proof context for the dataset regime. Below 2^64, PARI B-PSW is
-    # deterministic — all integrity reduces to gap/continuity checks.
+    # Check proof regime. Below 2^64, PARI B-PSW is deterministic —
+    # all integrity reduces to gap/continuity checks.
     infos = sorted_blocks_by_data()
     if infos:
         dataset_max_p = max(i.max_prime for i in infos if i.max_prime is not None)
-        set_proof_for_regime(dataset_max_p)
-    else:
-        set_proof_for_regime(0)  # no data — proof=False is fine
+        check_proof_regime(dataset_max_p)
 
     ran_action = False
 
@@ -401,6 +399,14 @@ def main():
                               f"~{gap['est_missing']:,} missing primes")
                 if report["filename_mismatches"]:
                     print(f"Filename mismatches: {len(report['filename_mismatches'])}")
+                journal.log("bmgr", "dataset_summary",
+                            n_blocks=len(comp["valid_infos"]),
+                            n_primes=comp["per_block_sum"],
+                            min_prime=comp["actual_min"],
+                            max_prime=comp["actual_max"],
+                            complete=comp["complete"],
+                            n_gaps=len(report["gaps"]),
+                            n_overlapping_pairs=comp["n_overlapping_pairs"])
             if args.paranoid:
                 from .data_integrity import paranoid_rolling_verify
                 print("\n=== PARANOID VERIFICATION ===", flush=True)
