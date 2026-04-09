@@ -30,11 +30,6 @@ if TYPE_CHECKING:
 EXPECTED_KEYS = ["p", "m_k", "n_k", "q_k"]
 
 
-def check_schema(df: pl.DataFrame) -> Dict[str, bool]:
-    present = {c: (c in df.columns) for c in EXPECTED_KEYS}
-    return present
-
-
 def detect_duplicates_in_block(path: Path) -> int:
     try:
         df = pl.read_parquet(path)
@@ -179,14 +174,6 @@ def _dusart_pi_bounds(x: float) -> Tuple[float, float]:
     return lower, upper
 
 
-def _pnt_estimate(n: int) -> float:
-    """PNT estimate for the n-th prime: p_n ~ n * (ln n + ln ln n).  Display only."""
-    if n < 6:
-        return [2, 3, 5, 7, 11, 13][n]
-    ln_n = math.log(n)
-    return n * (ln_n + math.log(ln_n))
-
-
 def detect_gaps(
     valid_infos: List["BlockInfo"],
 ) -> Tuple[List[Dict], List[Dict]]:
@@ -218,6 +205,63 @@ def detect_gaps(
                 "est_missing": int((gap_end - gap_start) / math.log(mid)) + 1,
             })
     return gaps, merged
+
+
+def detect_intra_block_gaps(
+    valid_infos: List["BlockInfo"],
+) -> List[Dict]:
+    """Detect missing primes within individual blocks.
+
+    For each block, reads unique p values, computes consecutive diffs,
+    and flags any diff exceeding the natural gap bound.  This catches
+    blocks that claim a wide [min_p, max_p] range but have internal
+    gaps from interleaved integration batches.
+
+    O(N) per block, zero SageMath calls.
+    """
+    from tqdm import tqdm
+
+    intra_gaps = []
+    for info in tqdm(valid_infos, desc="Intra-block gap check", unit="block"):
+        if info.min_prime is None or info.max_prime is None:
+            continue
+
+        # Expected range span vs unique count — skip blocks that are dense
+        span = info.max_prime - info.min_prime
+        if info.num_unique_primes is not None and span > 0:
+            expected_density = span / math.log(max(info.min_prime, 3))
+            if info.num_unique_primes >= expected_density * 0.95:
+                continue  # block looks dense, skip the read
+
+        try:
+            uniq = (pl.scan_parquet(info.path)
+                    .select(pl.col("p").unique().sort())
+                    .collect()["p"])
+        except Exception:
+            continue
+
+        if uniq.len() < 2:
+            continue
+
+        diffs = uniq.diff().drop_nulls()
+        max_diff = int(diffs.max())
+        bound = _natural_gap_bound(info.min_prime)
+
+        if max_diff > bound:
+            gap_idx = int(diffs.arg_max())
+            gap_before = int(uniq[gap_idx])
+            gap_after = int(uniq[gap_idx + 1])
+            mid = (gap_before + gap_after) / 2
+            intra_gaps.append({
+                "block": info.path.name,
+                "gap_start": gap_before,
+                "gap_end": gap_after,
+                "gap_size": max_diff,
+                "bound": bound,
+                "est_missing": int((gap_after - gap_before) / math.log(mid)) + 1,
+            })
+
+    return intra_gaps
 
 
 def validate_completeness_fast(infos: Optional[List["BlockInfo"]] = None) -> Dict:
@@ -429,23 +473,45 @@ def comprehensive_diagnosis(verbose: bool = False) -> Dict:
         print(f"  Per-block sum: {per_block_sum:,}, "
               f"delta: {per_block_sum - exact['expected_unique']:+,}")
 
-    # Gaps
-    if gaps:
-        print(f"\nGAPS ({len(gaps)}):")
-        for i, gap in enumerate(gaps, 1):
-            batch_size = 10_000
-            n_needed = _round_up_to_multiple(
-                int(gap["est_missing"] * 1.2),  # 20% margin
-                batch_size,
-            )
-            start_from = (gap["gap_start"] + 2
-                          if gap["gap_start"] % 2 == 1
-                          else gap["gap_start"] + 1)
-            print(f"  Gap {i}: {gap['block_a']} (max {gap['gap_start']:,}) "
-                  f"-> {gap['block_b']} (min {gap['gap_end']:,})")
-            print(f"    ~{gap['est_missing']:,} missing primes (PNT estimate)")
-            print(f"    Fix: funbuns --init {start_from} -n {n_needed} -b {batch_size}")
-            print(f"         bmgr --integrate-check")
+    # Intra-block gaps
+    intra_gaps = detect_intra_block_gaps(valid)
+
+    # Inter-block gaps
+    all_gaps = gaps + intra_gaps
+    if all_gaps:
+        if gaps:
+            print(f"\nINTER-BLOCK GAPS ({len(gaps)}):")
+            for i, gap in enumerate(gaps, 1):
+                batch_size = 10_000
+                n_needed = _round_up_to_multiple(
+                    int(gap["est_missing"] * 1.2),  # 20% margin
+                    batch_size,
+                )
+                start_from = (gap["gap_start"] + 2
+                              if gap["gap_start"] % 2 == 1
+                              else gap["gap_start"] + 1)
+                print(f"  Gap {i}: {gap['block_a']} (max {gap['gap_start']:,}) "
+                      f"-> {gap['block_b']} (min {gap['gap_end']:,})")
+                print(f"    ~{gap['est_missing']:,} missing primes (PNT estimate)")
+                print(f"    Fix: funbuns --init {start_from} -n {n_needed} -b {batch_size}")
+                print(f"         bmgr --integrate-check")
+        if intra_gaps:
+            print(f"\nINTRA-BLOCK GAPS ({len(intra_gaps)}):")
+            for i, gap in enumerate(intra_gaps, 1):
+                batch_size = 10_000
+                n_needed = _round_up_to_multiple(
+                    int(gap["est_missing"] * 1.2),
+                    batch_size,
+                )
+                start_from = (gap["gap_start"] + 2
+                              if gap["gap_start"] % 2 == 1
+                              else gap["gap_start"] + 1)
+                print(f"  Gap {i}: inside {gap['block']} at "
+                      f"[{gap['gap_start']:,} .. {gap['gap_end']:,}] "
+                      f"(diff={gap['gap_size']:,}, bound={gap['bound']:,})")
+                print(f"    ~{gap['est_missing']:,} missing primes")
+                print(f"    Fix: funbuns --init {start_from} -n {n_needed} -b {batch_size}")
+                print(f"         bmgr --integrate-check")
     elif comp["complete"]:
         print("\nGaps: 0")
 
@@ -455,8 +521,9 @@ def comprehensive_diagnosis(verbose: bool = False) -> Dict:
         "per_block_sum": per_block_sum,
         "min_prime": actual_min,
         "max_prime": actual_max,
-        "complete": comp["complete"],
+        "complete": comp["complete"] and len(intra_gaps) == 0,
         "gaps": gaps,
+        "intra_gaps": intra_gaps,
         "n_overlapping_pairs": n_overlapping,
         "n_coverage_intervals": len(merged),
     }

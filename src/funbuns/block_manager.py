@@ -163,51 +163,6 @@ class BlockManager:
         if len(files) > 10:
             print(f"    ... and {len(files) - 10} more files")
 
-    def reconfigure_block_size(self, new_prime_count: int, dry_run: bool = False):
-        """Reconfigure existing blocks to a new target prime count."""
-        print(f"Reconfiguring blocks to {new_prime_count:,} primes per block")
-
-        if dry_run:
-            print("  DRY RUN - no files will be modified")
-
-        block_files = list(self.blocks_dir.glob("*.parquet"))
-        run_files = list(self.runs_dir.glob("*.parquet"))
-
-        if block_files:
-            source_files = block_files
-            source_pattern = str(self.blocks_dir / "*.parquet")
-            print(f"  Using {len(block_files)} existing block files")
-        elif run_files:
-            source_files = run_files
-            source_pattern = str(self.runs_dir / "*.parquet")
-            print(f"  Using {len(run_files)} existing run files")
-        else:
-            print("  No block or run files found to reconfigure")
-            return
-
-        print("  Loading all data...")
-        all_data = pl.scan_parquet(source_pattern).collect().sort("p")
-        total_primes = all_data.select(pl.col("p").n_unique()).item()
-
-        new_blocks_needed = (total_primes + new_prime_count - 1) // new_prime_count
-        print(f"  Will create {new_blocks_needed} new blocks")
-
-        if not dry_run:
-            backup_timestamp = __import__('datetime').datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_blocks_dir = self.backup_dir / f"blocks_backup_{backup_timestamp}"
-            backup_blocks_dir.mkdir(exist_ok=True)
-
-            for file in source_files:
-                shutil.copy2(file, backup_blocks_dir / file.name)
-            print(f"  Backed up {len(source_files)} files to {backup_blocks_dir}")
-
-            # Clear existing blocks
-            for file in block_files:
-                file.unlink()
-
-        # Re-integrate using the library function
-        convert_runs_to_blocks_auto(target_prime_count=new_prime_count)
-
     def _lazy_unique_sorted_primes(self) -> pl.LazyFrame:
         bdir = self.blocks_dir
         pattern = str(bdir / 'pp_b*.parquet')
@@ -315,7 +270,6 @@ def main():
     parser.add_argument("--convert", action="store_true", help="Convert runs to blocks")
     parser.add_argument("--summary", action="store_true", help="Show block summary")
     parser.add_argument("--show-runs", action="store_true", help="Show summary of all run files")
-    parser.add_argument("--reconfigure", type=int, metavar="PRIMES", help="Reconfigure to N primes per block")
     parser.add_argument("--block-size", type=int, default=500_000, help="Target primes per block (default: 500,000)")
     parser.add_argument("--dry-run", action="store_true", help="Show what would happen without making changes")
     parser.add_argument("--data-dir", default=None, help="Data directory (default: from pixi.toml or ./data)")
@@ -371,10 +325,6 @@ def main():
         if args.show_runs:
             from .utils import show_run_files_summary
             show_run_files_summary()
-            ran_action = True
-
-        if args.reconfigure:
-            manager.reconfigure_block_size(args.reconfigure, dry_run=args.dry_run)
             ran_action = True
 
         if args.diagnose:

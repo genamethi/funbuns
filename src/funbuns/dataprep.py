@@ -30,7 +30,7 @@ def prepare_prime_powers(n=None, max_power=None, use_bounded=True):
         max_power = config.get("max_power", 64)
     
     filename = config.get("small_primes_filename", "small_primes.parquet")
-    from sage.all import prime_range, Integer
+    from sage.all import prime_range
     import math
     
     print(f"Generating prime powers for primes less than {n} (powers 1-{max_power})")

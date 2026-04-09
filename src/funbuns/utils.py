@@ -12,127 +12,6 @@ import tomllib
 import time
 import shutil
 from typing import Dict, List, Optional
-import numpy as np
-
-
-
-class TimingCollector:
-    """Collect and store timing data for performance profiling."""
-    
-    def __init__(self, verbose: bool = False):
-        self.timings: List[Dict] = []
-        self.verbose = verbose
-        self.active_timers: Dict[str, float] = {}
-    
-    def start_timer(self, operation: str, **metadata) -> str:
-        """Start timing an operation. Returns timer_id for ending."""
-        timer_id = f"{operation}_{len(self.timings)}"
-        start_time = time.perf_counter()
-        self.active_timers[timer_id] = start_time
-        
-        if self.verbose:
-            logging.info(f"Started: {operation}")
-        
-        return timer_id
-    
-    def end_timer(self, timer_id: str, operation: str, **metadata):
-        """End timing and record the result."""
-        end_time = time.perf_counter()
-        start_time = self.active_timers.pop(timer_id, end_time)
-        duration = end_time - start_time
-        
-        timing_record = {
-            'timestamp': datetime.now().isoformat(),
-            'operation': operation,
-            'duration_ms': duration * 1000,
-            **metadata
-        }
-        self.timings.append(timing_record)
-        
-        if self.verbose:
-            logging.info(f"Completed: {operation} in {duration*1000:.2f}ms")
-    
-    def time_operation(self, operation: str, **metadata):
-        """Context manager for timing operations."""
-        return TimingContext(self, operation, **metadata)
-    
-    def get_stats(self) -> Dict:
-        """Get timing statistics."""
-        if not self.timings:
-            return {}
-        
-        df = pl.DataFrame(self.timings)
-        stats = {}
-        
-        for operation in df['operation'].unique():
-            op_data = df.filter(pl.col('operation') == operation)['duration_ms']
-            stats[operation] = {
-                'count': len(op_data),
-                'mean_ms': op_data.mean(),
-                'median_ms': op_data.median(),
-                'min_ms': op_data.min(),
-                'max_ms': op_data.max(),
-                'std_ms': op_data.std()
-            }
-        return stats
-    
-    def save_debug_log(self, filepath: Optional[Path] = None):
-        """Save timing data to debug log."""
-        if not self.timings:
-            return
-            
-        if filepath is None:
-            filepath = get_data_dir() / f"timing_debug_{datetime.now().strftime('%Y%m%d_%H%M%S')}.parquet"
-        
-        df = pl.DataFrame(self.timings)
-        df.write_parquet(filepath)
-        
-        # Also save human-readable stats
-        stats_file = filepath.with_suffix('.txt')
-        with open(stats_file, 'w') as f:
-            f.write("=== TIMING STATISTICS ===\n\n")
-            stats = self.get_stats()
-            for operation, data in stats.items():
-                f.write(f"{operation}:\n")
-                f.write(f"  Count: {data['count']}\n")
-                f.write(f"  Mean: {data['mean_ms']:.2f}ms\n")
-                f.write(f"  Median: {data['median_ms']:.2f}ms\n")
-                f.write(f"  Range: {data['min_ms']:.2f}ms - {data['max_ms']:.2f}ms\n")
-                f.write(f"  Std Dev: {data['std_ms']:.2f}ms\n\n")
-        
-        logging.info(f"Timing data saved to {filepath}")
-        logging.info(f"Timing stats saved to {stats_file}")
-    
-    def print_summary(self):
-        """Print timing summary to console."""
-        stats = self.get_stats()
-        if not stats:
-            print("No timing data collected")
-            return
-            
-        print("\n=== TIMING SUMMARY ===")
-        for operation, data in stats.items():
-            print(f"{operation:25s}: {data['mean_ms']:6.2f}ms avg ({data['count']:4d} calls)")
-
-
-class TimingContext:
-    """Context manager for timing operations."""
-    
-    def __init__(self, collector: TimingCollector, operation: str, **metadata):
-        self.collector = collector
-        self.operation = operation
-        self.metadata = metadata
-        self.timer_id = None
-    
-    def __enter__(self):
-        self.timer_id = self.collector.start_timer(self.operation, **self.metadata)
-        return self
-    
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        if self.timer_id:
-            self.collector.end_timer(self.timer_id, self.operation, **self.metadata)
-
-
 def get_log_dir() -> Path:
     """Get the log directory path."""
     if log_dir := os.getenv('FUNBUNS_LOG_DIR'):
@@ -209,7 +88,7 @@ def setup_logging():
 
 
 # Partition schema and constants for worker optimization
-PARTITION_SCHEMA = {'p': pl.Int64, 'm_k': pl.Int64, 'n_k': pl.Int64, 'q_k': pl.Int64}
+PARTITION_SCHEMA = {'p': pl.Int64, 'm_k': pl.Int32, 'n_k': pl.Int32, 'q_k': pl.Int64}
 
 # Empirical partition distribution from 459M primes analysis
 # Used for accurate batch size estimation in workers
@@ -252,7 +131,7 @@ def get_config():
         return {}
 
 
-def resume_p(verbose: bool = False) -> int:
+def resume_p(verbose: bool = False) -> int | None:
     """Get the last processed prime from block data.
 
     Uses max_prime embedded in filenames (pp_b{idx}_p{max_prime}.parquet)
@@ -354,51 +233,12 @@ def get_config_file():
     return Path('pixi.toml')
 
 
-def get_backup_dir():
-    """Get the backup directory (under data_dir)."""
-    d = get_data_dir() / "backups"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
-
-
 def get_temp_dir():
     """Get the temporary directory (under data_dir)."""
     d = get_data_dir() / "tmp"
     d.mkdir(parents=True, exist_ok=True)
     return d
 
-
-def get_small_primes_table():
-    """
-    Load small primes table from configured file with error handling.
-    
-    Returns:
-        tuple: (table_lazy_frame, largest_small_prime) or (None, None) if not available
-    """
-    # Get configuration
-    config = get_config()
-    filename = config.get("small_primes_filename", "small_primes.parquet")
-    data_dir = get_data_dir()
-    table_path = data_dir / filename
-    
-    try:
-        if table_path.exists():
-            # Load table lazily (already created with Int64 schema)
-            table = pl.scan_parquet(table_path)
-            
-            # Get largest small prime (LSP) from last row, first column
-            lsp_result = table.select(pl.col("1").last()).collect()
-            lsp = lsp_result["1"].item()
-            
-            return table, lsp
-        else:
-            logging.warning(f"Small primes table not found at {table_path}")
-            logging.info("Run: funbuns --prep to generate the table")
-            return None, None
-            
-    except Exception as e:
-        logging.error(f"Error loading small primes table: {e}")
-        return None, None
 
 def show_run_files_summary():
     """
@@ -481,74 +321,6 @@ def setup_resume_mode(verbose):
     )
     
     return init_p, append_func
-
-
-import polars as pl
-from pathlib import Path
-
-def generate_partition_summary(verbose: bool = False):
-    """
-    Generate and display partition frequency summary using a single, efficient streaming query.
-    """
-    try:
-        data_dir = get_data_dir()
-        block_pattern = str(data_dir / "blocks" / "pp_b*.parquet")
-        block_files = list((data_dir / "blocks").glob("pp_b*.parquet"))
-
-        if not block_files:
-            print("No block files found for summary.")
-            return
-
-        print(f"\n=== PARTITION SUMMARY (from {len(block_files)} blocks) ===")
-
-        # Define the entire calculation as a single, lazy, streaming query
-        # This is far more efficient than batching in Python.
-        lazy_summary = (
-            pl.scan_parquet(block_pattern)
-            # 1. Count the number of partitions for each prime 'p'.
-            # A partition exists if q_k > 0.
-            .group_by("p")
-            .agg(
-                (pl.col("q_k") > 0).sum().alias("partition_count")
-            )
-            # 2. Count how many primes have each 'partition_count'.
-            # pl.len() is a fast way to count items in a group.
-            .group_by("partition_count")
-            .agg(
-                pl.len().alias("prime_count")
-            )
-            .sort("partition_count")
-        )
-
-        # Execute the query in streaming mode to keep memory usage low
-        summary_df = lazy_summary.collect(streaming=True)
-
-        # Display the results
-        total_primes = summary_df["prime_count"].sum()
-        print(f"Total unique primes processed: {total_primes:,}")
-
-        for row in summary_df.iter_rows(named=True):
-            count = row["partition_count"]
-            primes = row["prime_count"]
-            percentage = (primes / total_primes) * 100
-            label = "partitions" if count != 1 else "partition"
-            if count == 0:
-                label = "partitions" # Grammatically better for zero
-            print(f"  {count} {label}: {primes:,} primes ({percentage:.1f}%)")
-
-        if verbose:
-            # The verbose logic can be simplified as well
-            print(f"\nBlock details:")
-            for file in sorted(block_files)[:5]:
-                stats = pl.scan_parquet(file).select(pl.len().alias("rows")).collect()
-                print(f"  {file.name}: {stats['rows'].item():,} rows")
-            
-            if len(block_files) > 5:
-                print(f"  ... and {len(block_files) - 5} more blocks")
-
-    except Exception as e:
-        print(f"Error generating partition summary: {e}")
-            # Show examples in verbose mode
 
 
 def convert_runs_to_blocks_auto(target_prime_count: int = 500_000):

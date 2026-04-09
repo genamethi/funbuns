@@ -7,6 +7,8 @@ use pyo3_polars::derive::polars_expr;
 use rug::Integer;
 use serde::Deserialize;
 
+mod graph;
+
 // ---------------------------------------------------------------------------
 // Small-primes table for trial division (primes up to 2^16 cover sqrt(2^32))
 // ---------------------------------------------------------------------------
@@ -757,6 +759,80 @@ fn full_profile(inputs: &[Series], kwargs: FullProfileKwargs) -> PolarsResult<Se
     }
 
     StructChunked::from_series("full_profile".into(), len, fields.iter())
+        .map(|ca| ca.into_series())
+}
+
+// ---------------------------------------------------------------------------
+// Graph queries: successors, predecessors, ancestry chain
+//
+// Each returns a Struct{primes: List(Int64), ms: List(UInt8)} per row.
+// ---------------------------------------------------------------------------
+
+fn graph_query_output(input_fields: &[Field]) -> PolarsResult<Field> {
+    let _ = input_fields;
+    let fields = vec![
+        Field::new("primes".into(), DataType::List(Box::new(DataType::Int64))),
+        Field::new("ms".into(), DataType::List(Box::new(DataType::UInt8))),
+    ];
+    Ok(Field::new("graph_result".into(), DataType::Struct(fields)))
+}
+
+#[polars_expr(output_type_func=graph_query_output)]
+fn graph_successors(inputs: &[Series]) -> PolarsResult<Series> {
+    graph_query_struct(inputs[0].i64()?, "graph_successors", graph::successors)
+}
+
+#[polars_expr(output_type_func=graph_query_output)]
+fn graph_predecessors(inputs: &[Series]) -> PolarsResult<Series> {
+    graph_query_struct(inputs[0].i64()?, "graph_predecessors", graph::predecessors)
+}
+
+#[polars_expr(output_type_func=graph_query_output)]
+fn graph_chain(inputs: &[Series]) -> PolarsResult<Series> {
+    graph_query_struct(inputs[0].i64()?, "graph_chain", graph::ancestry_chain)
+}
+
+fn graph_query_struct(
+    ca: &Int64Chunked,
+    name: &str,
+    query_fn: fn(u64) -> Result<Vec<(u64, u8)>, String>,
+) -> PolarsResult<Series> {
+    let len = ca.len();
+
+    let mut primes_builder = ListPrimitiveChunkedBuilder::<Int64Type>::new(
+        "primes".into(), len, len * 4, DataType::Int64,
+    );
+    let mut ms_builder = ListPrimitiveChunkedBuilder::<UInt8Type>::new(
+        "ms".into(), len, len * 4, DataType::UInt8,
+    );
+
+    for opt_p in ca.into_iter() {
+        match opt_p {
+            Some(p) if p > 0 => {
+                match query_fn(p as u64) {
+                    Ok(results) => {
+                        let ps: Vec<i64> = results.iter().map(|(pr, _)| *pr as i64).collect();
+                        let ms: Vec<u8> = results.iter().map(|(_, m)| *m).collect();
+                        primes_builder.append_slice(&ps);
+                        ms_builder.append_slice(&ms);
+                    }
+                    Err(_) => {
+                        primes_builder.append_null();
+                        ms_builder.append_null();
+                    }
+                }
+            }
+            _ => {
+                primes_builder.append_null();
+                ms_builder.append_null();
+            }
+        }
+    }
+
+    let primes_series = primes_builder.finish().into_series();
+    let ms_series = ms_builder.finish().into_series();
+
+    StructChunked::from_series(name.into(), len, [primes_series, ms_series].iter())
         .map(|ca| ca.into_series())
 }
 

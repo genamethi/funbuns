@@ -11,7 +11,7 @@ import time
 import psutil
 from .core import PPManager
 from .utils import (setup_logging, get_config, setup_analysis_mode,
-                    generate_partition_summary, get_data_dir, JournalWriter)
+                    get_data_dir, JournalWriter)
 from .dataprep import prepare_prime_powers
 from .viewer import generate_dashboard
 import polars as pl

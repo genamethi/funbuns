@@ -1,0 +1,42 @@
+[package]
+name = "funbuns_graph"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "funbuns_graph"
+path = "src/lib.rs"
+
+[[bin]]
+name = "build-graph"
+path = "src/bin/build_graph.rs"
+
+[dependencies]
+# Graph storage
+webgraph = "0.6"
+dsi-bitstream = "0.7"
+memmap2 = "0.9"
+tempfile = "3"
+
+# Parquet reading (streaming, no full Polars needed)
+parquet = { version = "58", default-features = false, features = ["arrow","zstd"] }
+arrow = { version = "58", default-features = false, features = ["ffi"] }
+
+# Progress + CLI
+indicatif = "0.17"
+clap = { version = "4", features = ["derive"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+
+# Logging (used by webgraph internals)
+log = "0.4"
+env_logger = "0.11"
+
+[profile.release]
+opt-level = 3
+lto = "thin"

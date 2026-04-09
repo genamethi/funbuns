@@ -193,3 +193,51 @@ def full_profile(expr: pl.Expr, filtration_primes: list[int] | None = None) -> p
         is_elementwise=True,
         kwargs={"filtration_primes": filtration_primes},
     )
+
+
+# ---------------------------------------------------------------------------
+# Graph queries: successors, predecessors, ancestry chain
+#
+# Each returns a Struct{primes: List(Int64), ms: List(UInt8)}.
+# Set FUNBUNS_GRAPH_DIR to point to the graph directory, or it defaults
+# to /media/extssd/research/dioph.pp/data/graph.
+# ---------------------------------------------------------------------------
+
+def graph_successors(expr: pl.Expr) -> pl.Expr:
+    """Successor primes in the partition DAG (q → p edges from this node).
+
+    Returns Struct{primes: List(Int64), ms: List(UInt8)}.
+    """
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="graph_successors",
+        args=[expr],
+        is_elementwise=True,
+    )
+
+
+def graph_predecessors(expr: pl.Expr) -> pl.Expr:
+    """Predecessor (ancestor) primes in the partition DAG.
+
+    Returns Struct{primes: List(Int64), ms: List(UInt8)}.
+    """
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="graph_predecessors",
+        args=[expr],
+        is_elementwise=True,
+    )
+
+
+def graph_chain(expr: pl.Expr) -> pl.Expr:
+    """Follow the ancestry chain back to a k=0 source.
+
+    Returns Struct{primes: List(Int64), ms: List(UInt8)} tracing the path
+    from the input prime to its terminal ancestor.
+    """
+    return pl.plugins.register_plugin_function(
+        plugin_path=_plugin_path(),
+        function_name="graph_chain",
+        args=[expr],
+        is_elementwise=True,
+    )

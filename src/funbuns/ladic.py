@@ -14,7 +14,6 @@ import json
 import time
 import traceback
 import polars as pl
-import numpy as np
 from math import log, floor
 from pathlib import Path
 from typing import Optional
@@ -24,30 +23,6 @@ from .utils import get_data_dir, JournalWriter
 # ---------------------------------------------------------------------------
 # Shared utilities
 # ---------------------------------------------------------------------------
-
-def _block_pattern() -> str:
-    return str(get_data_dir() / "blocks" / "pp_b*.parquet")
-
-
-def _obstructed_primes_lazy() -> pl.LazyFrame:
-    """Lazy frame of obstructed prime values (those with no decomposition)."""
-    return (
-        pl.scan_parquet(_block_pattern())
-        .group_by('p')
-        .agg((pl.col('m_k') == 0).all().alias('is_obstructed'))
-        .filter(pl.col('is_obstructed'))
-        .select('p')
-    )
-
-
-def _all_primes_lazy() -> pl.LazyFrame:
-    """Lazy frame of all unique primes from block data."""
-    return (
-        pl.scan_parquet(_block_pattern())
-        .select('p')
-        .unique()
-    )
-
 
 def classify_remainder(omega: int) -> str:
     """Classify by number of distinct prime factors (scalar version)."""
@@ -75,11 +50,6 @@ def v_ell(n: int, ell: int) -> int:
         n //= ell
         k += 1
     return k
-
-
-def valuation_profile(n: int, primes: list[int]) -> list[int]:
-    """Compute v_ell(n) for each ell in primes."""
-    return [v_ell(n, ell) for ell in primes]
 
 
 # ---------------------------------------------------------------------------
@@ -144,41 +114,6 @@ def gap_filling_analysis(p: int) -> pl.DataFrame:
 
 
 # ---------------------------------------------------------------------------
-# Factorization lattice (uses SageMath)
-# ---------------------------------------------------------------------------
-
-def factorization_lattice(n: int) -> dict:
-    """Compute the divisor lattice structure of n."""
-    if n <= 1:
-        return {'factors': [], 'divisor_count': 1, 'lattice_dimension': 0,
-                'lattice_points': 1, 'betti_0': 1, 'euler_char': 1}
-
-    from sage.all import factor, ZZ
-    factors = list(factor(ZZ(n)))
-    exponents = [e for _, e in factors]
-    omega = len(factors)
-    tau = 1
-    for e in exponents:
-        tau *= (e + 1)
-
-    prod_e = 1
-    sum_e = 0
-    for e in exponents:
-        prod_e *= e
-        sum_e += e
-    euler_char = prod_e * ((-1) ** (sum_e - omega)) if omega > 0 else 1
-
-    return {
-        'factors': [(int(p), int(e)) for p, e in factors],
-        'divisor_count': tau,
-        'lattice_dimension': omega,
-        'lattice_points': tau,
-        'betti_0': 1,
-        'euler_char': euler_char,
-    }
-
-
-# ---------------------------------------------------------------------------
 # Persistence / I/O
 # ---------------------------------------------------------------------------
 
@@ -189,13 +124,6 @@ def save_analysis(df: pl.DataFrame, name: str = "ladic_analysis") -> Path:
     df.write_parquet(out)
     print(f"Analysis saved: {out} ({df.height} rows)")
     return out
-
-
-def load_analysis(name: str = "ladic_analysis") -> pl.DataFrame:
-    """Load a previously saved analysis DataFrame."""
-    data_dir = get_data_dir()
-    path = data_dir / f"{name}.parquet"
-    return pl.read_parquet(path)
 
 
 # ---------------------------------------------------------------------------
