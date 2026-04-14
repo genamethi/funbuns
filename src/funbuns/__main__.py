@@ -11,25 +11,10 @@ import time
 import psutil
 from .core import PPManager
 from .utils import (setup_logging, get_config, setup_analysis_mode,
-                    get_data_dir, JournalWriter)
+                    JournalWriter)
 from .dataprep import prepare_prime_powers
 from .viewer import generate_dashboard
 import polars as pl
-
-
-def _check_block_data() -> bool:
-    """Check that block data exists. Returns True if blocks found."""
-    block_dir = get_data_dir() / "blocks"
-    if not block_dir.exists():
-        print("Error: No block data found in data/blocks/.")
-        print("Run `funbuns -n <N>` first to generate prime partition data.")
-        return False
-    # Use next() instead of list() to avoid materializing 12K+ paths
-    if next(block_dir.glob("pp_b*.parquet"), None) is None:
-        print("Error: No block data found in data/blocks/.")
-        print("Run `funbuns -n <N>` first to generate prime partition data.")
-        return False
-    return True
 
 
 def main():
@@ -215,15 +200,11 @@ def main():
     ran_analysis = False
 
     if args.ladic:
-        if not _check_block_data():
-            return
         from .ladic import run_ladic_analysis
         run_ladic_analysis(limit=args.ladic_limit, verbose=args.verbose)
         ran_analysis = True
 
     if args.spectral:
-        if not _check_block_data():
-            return
         from .spectral import (obstruction_indicator, spectral_analysis_obstruction,
                                save_analysis)
         print("=== Spectral Analysis of Obstruction Indicator ===\n")
@@ -234,8 +215,6 @@ def main():
         ran_analysis = True
 
     if args.clocks is not None:
-        if not _check_block_data():
-            return
         from .spectral import clock_analysis, save_analysis
         print(f"=== Prime Clock Superposition (N={args.clocks}) ===\n")
         clocks = clock_analysis(limit=args.clocks, verbose=args.verbose)
@@ -243,29 +222,21 @@ def main():
         ran_analysis = True
 
     if args.fixed_mod:
-        if not _check_block_data():
-            return
         from .fixed_mod import run_fixed_mod_analysis
         run_fixed_mod_analysis(limit=args.fixed_mod_limit, verbose=args.verbose)
         ran_analysis = True
 
     if args.remainder:
-        if not _check_block_data():
-            return
         from .remainder import run_remainder_analysis
         run_remainder_analysis(limit=args.remainder_limit, verbose=args.verbose)
         ran_analysis = True
 
     if args.zipf:
-        if not _check_block_data():
-            return
         from .zipf import run_zipf_analysis
         run_zipf_analysis(q_max=args.zipf_qmax, verbose=args.verbose)
         ran_analysis = True
 
     if 'explore' in analysis_modes:
-        if not _check_block_data():
-            return
         from .data_exploration import run_exploration
         run_exploration(q=args.explore_q, m=args.explore_m, verbose=args.verbose,
                         tree=args.tree, local_global=args.local_global,
@@ -309,23 +280,31 @@ def main():
                 num_primes=args.num_primes, batch_size=args.batch_size,
                 cores=cores, buffer_size=buffer_size)
 
-    # --init skips the expensive resume scan entirely
+    # --init skips the resume scan entirely.
+    # PPBatchFeeder treats init_p as the last *processed* prime (resume
+    # semantics: start_idx = prime_pi(init_p), then P.unrank gives the
+    # next prime).  For -i we want to *include* the given prime, so pass
+    # the prime just before it.
     if args.init is not None:
-        from .utils import append_data
-        init_p = args.init
-        append_func = lambda df: append_data(df, verbose=args.verbose)
-        data_file = None
-        print(f"Starting from prime {init_p} (--init override)")
+        from sage.all import Integer, previous_prime
+        from .utils import _build_temp_iceberg_writer
+        from .iceberg_schema import IcebergWriter
+        init_p = int(previous_prime(Integer(args.init)))
+        if args.temp:
+            writer, temp_root = _build_temp_iceberg_writer()
+            print(f"Running in temporary mode: {temp_root}")
+        else:
+            writer = IcebergWriter()
+        print(f"Starting from prime {args.init} (-i override, writing to iceberg)")
     else:
-        # Setup analysis mode (handles temp, fresh, resume logic) (in utils.py)
-        init_p, append_func, data_file = setup_analysis_mode(args, config)
-
-    if args.temp:
-        print(f"Running in temporary mode: {data_file}")
+        init_p, writer, temp_root = setup_analysis_mode(args, config)
+        if args.temp:
+            print(f"Running in temporary mode: {temp_root}")
 
     # Create PPManager instance and run
     manager = PPManager(init_p, args.num_primes, args.batch_size, cores,
-                        buffer_size=buffer_size, append_data=append_func, verbose=args.verbose)
+                        buffer_size=buffer_size, append_data=writer.flush,
+                        verbose=args.verbose)
     gen_status = manager.run_gen() or {}
 
     elapsed = round(time.monotonic() - t0, 2)
@@ -347,21 +326,6 @@ def main():
     if isinstance(remaining, int) and remaining > 0:
         print(f"\n{remaining:,} primes not processed.")
         print(f"Resume: funbuns -n {remaining} -b {args.batch_size}")
-
-    # Integration: skip if interrupted or --init (run files stay for manual review)
-    if gen_status.get('interrupted'):
-        print("Integration skipped (interrupted). Run files preserved in data/runs/.")
-        print("Next: bmgr --integrate-check")
-    elif args.init is not None:
-        from .utils import get_data_dir as _gdd
-        runs_dir = _gdd() / "runs"
-        run_files = list(runs_dir.glob("*.parquet")) if runs_dir.exists() else []
-        print(f"\nRun files in data/runs/: {len(run_files)}")
-        print("Integration skipped (--init mode). Run files need manual review.")
-        print("Next: bmgr --integrate-check")
-    else:
-        from .utils import convert_runs_to_blocks_auto
-        convert_runs_to_blocks_auto()
 
 
 if __name__ == "__main__":

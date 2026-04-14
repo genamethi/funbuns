@@ -66,40 +66,18 @@ def _build_batch_frames(
     batch_id: int,
 ) -> tuple[pl.DataFrame, pl.DataFrame, dict]:
     """
-    Concat legacy blocks, filter by p > p_floor, compute iceberg-shaped frames.
-    Returns (primes_df, decomp_df, source_stats).
+    Concat legacy blocks, filter by p > p_floor, delegate iceberg shaping to
+    iceberg_schema.shape_for_write. Returns (primes_df, decomp_df, source_stats).
     """
-    lf = (
+    raw = (
         pl.scan_parquet([str(p) for p in block_paths])
         .filter(pl.col("p") > p_floor)
-        .unique(subset=["p", "m_k", "n_k", "q_k"])
+        .collect()
     )
-    src = lf.collect()
-
-    decomp = (
-        src.filter(pl.col("q_k") > 0)
-        .with_columns(
-            pl.col("p").cast(pl.Int64),
-            pl.col("m_k").cast(pl.Int32),
-            pl.col("n_k").cast(pl.Int32),
-            pl.col("q_k").cast(pl.Int64),
-            pl.lit(batch_id, dtype=pl.Int32).alias("batch_id"),
-        )
-        .select(["p", "m_k", "n_k", "q_k", "batch_id"])
-    )
-
-    primes = (
-        src.group_by("p")
-        .agg((pl.col("q_k") > 0).sum().cast(pl.Int32).alias("k"))
-        .with_columns(
-            pl.col("p").cast(pl.Int64),
-            pl.lit(batch_id, dtype=pl.Int32).alias("batch_id"),
-        )
-        .select(["p", "k", "batch_id"])
-    )
+    primes, decomp = isch.shape_for_write(raw, batch_id=batch_id)
 
     source_stats = {
-        "source_rows": src.height,
+        "source_rows": raw.height,
         "source_distinct_primes": primes.height,
         "source_k_sum": int(primes["k"].sum()),
         "source_p_min": int(primes["p"].min()),

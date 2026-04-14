@@ -100,17 +100,6 @@ PARTITION_DISTRIBUTION = {
 }
 
 
-def get_default_data_file():
-    """Get the default data file path."""
-    return get_data_dir() / "pparts.parquet"
-
-
-def get_temp_data_file():
-    """Get the path to a timestamped temporary data file."""
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    return get_temp_dir() / f"pparts_temp_{timestamp}.parquet"
-
-
 def get_config():
     """Get application configuration from pixi.toml following hierarchy."""
     try:
@@ -130,81 +119,6 @@ def get_config():
         logging.warning(f"Could not load {config_file}, using defaults")
         return {}
 
-
-def resume_p(verbose: bool = False) -> int | None:
-    """Get the last processed prime from block data.
-
-    Uses max_prime embedded in filenames (pp_b{idx}_p{max_prime}.parquet)
-    to find the highest prime without reading any parquet data.
-
-    Returns the max prime, or None if no block data exists.
-    """
-    try:
-        from .block_catalog import _parse_block_filename
-
-        data_dir = get_data_dir()
-        block_dir = data_dir / "blocks"
-
-        if not block_dir.exists():
-            return None
-
-        block_files = list(block_dir.glob("pp_b*.parquet"))
-        if not block_files:
-            return None
-
-        # Extract max_prime from each filename, take the global max
-        best_p = 0
-        best_file = None
-        for f in block_files:
-            _, max_prime = _parse_block_filename(f)
-            if max_prime is not None and max_prime > best_p:
-                best_p = max_prime
-                best_file = f
-
-        if best_p == 0:
-            return None
-
-        if verbose:
-            print(f"Resume: max prime {best_p:,} from {best_file.name} "
-                  f"({len(block_files)} blocks)")
-
-        return best_p
-
-    except Exception as e:
-        logging.error(f"Error reading block files: {e}")
-        print(f"\nError: Could not read existing block data")
-        print("The files may be corrupted or in an invalid format.")
-        print("Please run a data check or delete the files to start fresh.")
-        raise
-
-
-def append_data(df: pl.DataFrame, buffer_size: int = None, filepath=None, verbose: bool = False):
-    """
-    Append data using incremental files to avoid O(n²) operations.
-    
-    Args:
-        df: Polars DataFrame to append
-        buffer_size: Optional buffer size for logging control  
-        filepath: Optional custom file path (defaults to main data file)
-        verbose: Whether to log incremental file writes
-    """
-
-    # Ensure both runs/ and blocks/ exist (consistent auto-creation)
-    data_dir = get_data_dir()
-    runs_dir = data_dir / "runs"
-    runs_dir.mkdir(parents=True, exist_ok=True)
-    (data_dir / "blocks").mkdir(parents=True, exist_ok=True)
-    # Use microseconds and pid to avoid filename collisions within the same second
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
-    pid = os.getpid()
-    run_file = runs_dir / f"pparts_run_{timestamp}_{pid}.parquet"
-    df.write_parquet(run_file, compression="zstd", compression_level=1,
-                     row_group_size=min(len(df), 100_000))
-
-    if verbose:
-        logging.info(f"Data written to run file: {run_file.name}")
-        logging.info(f"Batch size: {len(df)} rows")
-    return
 
 def get_data_dir():
     """Get the application data directory path following configuration hierarchy."""
@@ -240,113 +154,60 @@ def get_temp_dir():
     return d
 
 
-def show_run_files_summary():
-    """
-    Show summary of all run files.
-    """
-    data_dir = get_data_dir()
-    run_files = list((data_dir / "runs").glob("*.parquet"))
-    
-    if not run_files:
-        print("No run files found")
-        return
-    
-    print(f"\n📁 Found {len(run_files)} run files:")
-    
-    total_rows = 0
-    total_primes = 0
-    for run_file in sorted(run_files):
-        try:
-            # Quick stats
-            stats = pl.scan_parquet(run_file).select([
-                pl.len().alias("rows"),
-                pl.col("p").n_unique().alias("primes")
-            ]).collect()
-            
-            rows = stats["rows"].item()
-            primes = stats["primes"].item()
-            total_rows += rows
-            total_primes += primes
-            
-            print(f"  {run_file.name}: {rows:,} rows, {primes:,} primes")
-            
-        except Exception as e:
-            print(f"  {run_file.name}: Error reading ({e})")
-    
-    print(f"\n📊 Total: {total_rows:,} rows, {total_primes:,} unique primes across all run files")
+def _build_temp_iceberg_writer():
+    """Create an IcebergWriter backed by a fresh timestamped catalog in
+    get_temp_dir(). Each --temp run gets its own isolated warehouse."""
+    from .iceberg_schema import IcebergWriter, open_catalog
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    temp_root = get_temp_dir() / f"iceberg_temp_{ts}"
+    cat = open_catalog(warehouse_root=temp_root / "warehouse")
+    return IcebergWriter(cat=cat), temp_root
 
 
 def setup_analysis_mode(args, config):
     """
-    Setup analysis mode based on CLI arguments and config.
-    
+    Setup generation mode: build the iceberg writer and pick init_p.
+
     Returns:
-        tuple: (start_idx, append_func, data_file)
+        tuple: (init_p, writer, info) where info is a human-readable
+        description of where data is being written (warehouse path for --temp,
+        None for the default catalog).
     """
-    
     if args.temp:
-        # Temporary mode - always monolithic
-        data_file = get_temp_data_file()
-        init_p = 2
-        append_func = lambda df: append_data(
-            df, filepath=data_file, verbose=args.verbose
-        )
-        return init_p, append_func, data_file        
-    else:
-        # Resume mode - smart resume logic
-        init_p, append_func = setup_resume_mode(args.verbose)
-        return init_p, append_func,  None
-
-
+        writer, temp_root = _build_temp_iceberg_writer()
+        return 2, writer, temp_root
+    return (*setup_resume_mode(args.verbose), None)
 
 
 def setup_resume_mode(verbose):
     """
-    Setup resume mode with smart fallback logic.
-    
-    Returns:
-        tuple: (init_p, append_func)
+    Open the canonical iceberg catalog and derive init_p from its current
+    manifest state. Returns (init_p, writer).
     """
-    init_p = resume_p(verbose=verbose)
+    from .iceberg_schema import IcebergWriter
 
-    if init_p is None:
-        print("No existing data found, starting from beginning with separate block files")
+    writer = IcebergWriter()
+    if writer.resume_p > 0:
+        init_p = writer.resume_p
+        if verbose:
+            print(f"Resuming from prime {init_p:,} (iceberg max p)")
+        else:
+            print(f"Resuming from prime {init_p}")
+    else:
         init_p = 2
-    else:
-        print(f"Resuming from prime {init_p} using separate block files")
-
-    
-    append_func = lambda df: append_data(
-        df, verbose=verbose
-    )
-    
-    return init_p, append_func
+        print("No existing iceberg data found, starting from beginning")
+    return init_p, writer
 
 
-def convert_runs_to_blocks_auto(target_prime_count: int = 500_000):
-    """
-    Automatically integrate run files into blocks. The integration logic is trusted to produce
-    correct, non-overlapping, and de-duplicated blocks.
-    """
-    # This function already handles the "no runs" case internally
-    from .run_ingester import integrate_runs_into_blocks
-    
-    print("\n🔄 Integrating run files into blocks...")
-    work_done = integrate_runs_into_blocks(
-        target_prime_count=target_prime_count,
-        verbose=True,
-        delete_run_files=True # Trust the process and delete on success
-    )
-    
-    if work_done:
-        print("  ✅ Integration successful. Run files removed.")
-    else:
-        print("No work done.")
+def resume_p(verbose: bool = False) -> int | None:
+    """Return the last committed prime from the iceberg primes table, or None
+    if the catalog is empty. Thin wrapper over IcebergWriter's manifest scan."""
+    from .iceberg_schema import IcebergWriter
 
-    # (Optional) If you are still concerned, you can run the fast check
-    # overlaps = detect_overlaps_fast()
-    # if not overlaps.is_empty():
-    #     print("  ❌ WARNING: Overlaps detected after integration!")
-    #     print(overlaps)
-    # else:
-    #     print("  ✅ Overlap check passed.")
+    writer = IcebergWriter()
+    if writer.resume_p <= 0:
+        return None
+    if verbose:
+        print(f"Resume: max prime {writer.resume_p:,} from iceberg manifest")
+    return writer.resume_p

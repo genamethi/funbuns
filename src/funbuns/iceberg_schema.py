@@ -463,6 +463,103 @@ def _write_pointer(tbl: Table) -> Path:
     return pointer
 
 
+def shape_for_write(
+    raw: pl.DataFrame,
+    *,
+    batch_id: int,
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """
+    Transform a raw partition frame {p, m_k, n_k, q_k} into the (primes, decomp)
+    pair that write_batch expects. Deduplicates on the full row key, filters
+    sentinel rows (q_k == 0) out of decomp, and derives per-prime k counts for
+    the primes table. The raw frame's primes that are entirely obstructed still
+    land in primes with k=0.
+    """
+    src = raw.unique(subset=["p", "m_k", "n_k", "q_k"])
+    decomp = (
+        src.filter(pl.col("q_k") > 0)
+        .with_columns(
+            pl.col("p").cast(pl.Int64),
+            pl.col("m_k").cast(pl.Int32),
+            pl.col("n_k").cast(pl.Int32),
+            pl.col("q_k").cast(pl.Int64),
+            pl.lit(batch_id, dtype=pl.Int32).alias("batch_id"),
+        )
+        .select(["p", "m_k", "n_k", "q_k", "batch_id"])
+    )
+    primes = (
+        src.group_by("p")
+        .agg((pl.col("q_k") > 0).sum().cast(pl.Int32).alias("k"))
+        .with_columns(
+            pl.col("p").cast(pl.Int64),
+            pl.lit(batch_id, dtype=pl.Int32).alias("batch_id"),
+        )
+        .select(["p", "k", "batch_id"])
+    )
+    return primes, decomp
+
+
+class IcebergWriter:
+    """
+    Live-path writer: owns a catalog handle and a monotonic batch_id counter,
+    initialized from existing iceberg manifest state. Each flush() call shapes
+    a raw partition frame, commits a new batch, and advances the counter.
+
+    Intended to be constructed once per process and passed as a bound-method
+    callback (writer.flush) into PPConsumer.
+
+    Attributes:
+        cat: active SqlCatalog handle.
+        next_batch_id: next batch_id to be assigned on flush().
+        resume_p: max prime already committed, or 0 if the tables are empty.
+    """
+
+    def __init__(self, cat: SqlCatalog | None = None):
+        self.cat = cat if cat is not None else open_catalog()
+        ensure_tables(self.cat)
+        self.next_batch_id, self.resume_p = self._init_state()
+
+    def _init_state(self) -> tuple[int, int]:
+        try:
+            tbl = self.cat.load_table(PRIMES_IDENT)
+        except Exception:
+            return 0, 0
+        if tbl.current_snapshot() is None:
+            return 0, 0
+        files = pl.from_arrow(tbl.inspect.files().select(["readable_metrics"]))
+        if files.height == 0:
+            return 0, 0
+        bounds = files.select(
+            pl.col("readable_metrics")
+            .struct.field("batch_id")
+            .struct.field("upper_bound")
+            .max()
+            .alias("max_batch"),
+            pl.col("readable_metrics")
+            .struct.field("p")
+            .struct.field("upper_bound")
+            .max()
+            .alias("max_p"),
+        )
+        max_batch = bounds["max_batch"].item()
+        max_p = bounds["max_p"].item()
+        if max_batch is None or max_p is None:
+            return 0, 0
+        return int(max_batch) + 1, int(max_p)
+
+    def flush(self, raw_df: pl.DataFrame) -> WriteBatchResult:
+        batch_id = self.next_batch_id
+        primes_df, decomp_df = shape_for_write(raw_df, batch_id=batch_id)
+        result = write_batch(
+            self.cat,
+            batch_id=batch_id,
+            primes_df=primes_df,
+            decomp_df=decomp_df,
+        )
+        self.next_batch_id += 1
+        return result
+
+
 def write_batch(
     cat: SqlCatalog,
     *,
