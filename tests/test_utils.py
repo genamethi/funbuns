@@ -1,115 +1,18 @@
-"""Tests for utils.py: resume_p, append_data, JournalWriter, get_data_dir."""
+"""Tests for utils.py: JournalWriter, get_data_dir.
+
+Legacy tests for block-filename-based resume_p, append_data, and
+blocks_dir auto-creation were removed in the iceberg ingest cutover
+(steps 3-5). resume_p now reads iceberg manifest state; see
+test_iceberg_commit_seq.py for coverage of the replacement path.
+"""
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 
-import polars as pl
 import pytest
-from funbuns import VERSION
 
-from funbuns.utils import (
-    JournalWriter,
-    PARTITION_SCHEMA,
-    append_data,
-    get_data_dir,
-    resume_p,
-)
-
-
-def _touch_parquet(path: Path):
-    """Create a minimal valid parquet file (empty schema is fine for filename tests)."""
-    pl.DataFrame({"p": [1]}).write_parquet(path)
-
-
-class TestResumeP:
-    """T14: Resume from block filenames without reading parquet data."""
-
-    def test_returns_max_prime(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(tmp_path))
-        blocks = tmp_path / "blocks"
-        blocks.mkdir()
-        _touch_parquet(blocks / "pp_b001_p1000003.parquet")
-        _touch_parquet(blocks / "pp_b002_p2000003.parquet")
-        _touch_parquet(blocks / "pp_b003_p3000017.parquet")
-
-        assert resume_p() == 3000017
-
-    def test_no_block_files(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(tmp_path))
-        blocks = tmp_path / "blocks"
-        blocks.mkdir()
-        # Empty directory
-        assert resume_p() is None
-
-    def test_no_blocks_dir(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(tmp_path))
-        # No blocks/ subdirectory at all
-        assert resume_p() is None
-
-    def test_unparseable_filenames(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(tmp_path))
-        blocks = tmp_path / "blocks"
-        blocks.mkdir()
-        _touch_parquet(blocks / "random_file.parquet")
-        _touch_parquet(blocks / "not_a_block.parquet")
-        # No valid pp_b pattern -> best_p stays 0 -> returns None
-        assert resume_p() is None
-
-
-class TestAppendData:
-    """T15: Write DataFrames to run files in data/runs/."""
-
-    def test_creates_run_file(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(tmp_path))
-        df = pl.DataFrame({
-            "p": [7, 11, 13],
-            "m_k": [1, 1, 1],
-            "n_k": [1, 1, 1],
-            "q_k": [5, 9, 11],
-        }).cast({"p": pl.Int64, "m_k": pl.Int64, "n_k": pl.Int64, "q_k": pl.Int64})
-
-        append_data(df)
-
-        runs = tmp_path / "runs"
-        assert runs.exists()
-        run_files = list(runs.glob("pparts_run_*.parquet"))
-        assert len(run_files) == 1
-
-        # Read back and verify
-        result = pl.read_parquet(run_files[0])
-        assert result.shape == (3, 4)
-        assert set(result.columns) == {"p", "m_k", "n_k", "q_k"}
-        assert result["p"].to_list() == [7, 11, 13]
-
-    def test_distinct_files_on_rapid_writes(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(tmp_path))
-        df = pl.DataFrame({
-            "p": [7], "m_k": [1], "n_k": [1], "q_k": [5],
-        }).cast({"p": pl.Int64, "m_k": pl.Int64, "n_k": pl.Int64, "q_k": pl.Int64})
-
-        append_data(df)
-        append_data(df)
-
-        runs = tmp_path / "runs"
-        run_files = list(runs.glob("pparts_run_*.parquet"))
-        assert len(run_files) == 2
-        # Filenames should differ (microsecond timestamp + PID)
-        names = [f.name for f in run_files]
-        assert names[0] != names[1]
-
-    def test_filename_contains_pid(self, tmp_path, monkeypatch):
-        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(tmp_path))
-        df = pl.DataFrame({
-            "p": [7], "m_k": [1], "n_k": [1], "q_k": [5],
-        }).cast({"p": pl.Int64, "m_k": pl.Int64, "n_k": pl.Int64, "q_k": pl.Int64})
-
-        append_data(df)
-
-        run_files = list((tmp_path / "runs").glob("pparts_run_*.parquet"))
-        assert len(run_files) == 1
-        assert str(os.getpid()) in run_files[0].name
+from funbuns.utils import JournalWriter, get_data_dir
 
 
 class TestJournalWriter:
@@ -150,10 +53,8 @@ class TestJournalWriter:
 
         entry = json.loads(journal_path.read_text().strip())
         ts = entry["ts"]
-        # Should parse as ISO 8601 with timezone
         parsed = datetime.fromisoformat(ts)
         assert parsed.tzinfo is not None
-        # Should be UTC
         assert parsed.tzinfo == timezone.utc or "+" in ts or "Z" in ts
 
 
@@ -186,42 +87,9 @@ data_dir = "{config_dir}"
         monkeypatch.delenv("FUNBUNS_DATA_DIR", raising=False)
         monkeypatch.chdir(tmp_path)
 
-        # Write a pixi.toml without data_dir
         pixi_toml = tmp_path / "pixi.toml"
         pixi_toml.write_text("[tool.funbuns]\nbuffer_size = 10000\n")
 
         result = get_data_dir()
         assert result == Path("data")
-        assert (tmp_path / "data").exists()  # Should be created
-
-
-@pytest.mark.xfail(
-    condition=VERSION < (1, 1, 0),
-    reason="Inconsistent directory creation: blocks_dir does not mkdir, "
-           "but append_data auto-creates runs/",
-    strict=True,
-)
-class TestBlocksDirCreation:
-    """X5: blocks_dir() should create the directory like other data-path functions."""
-
-    def test_blocks_dir_creates_missing_directory(self, tmp_path, monkeypatch):
-        fresh = tmp_path / "fresh_data"
-        monkeypatch.setenv("FUNBUNS_DATA_DIR", str(fresh))
-
-        data_dir = get_data_dir()
-        blocks = data_dir / "blocks"
-
-        # append_data creates runs/ automatically
-        df = pl.DataFrame(
-            {"p": [7], "m_k": [1], "n_k": [1], "q_k": [5]},
-            schema=PARTITION_SCHEMA,
-        )
-        append_data(df)
-
-        runs = data_dir / "runs"
-        assert runs.exists(), "runs/ should be auto-created by append_data"
-
-        # blocks/ should also exist (currently it doesn't)
-        assert blocks.exists(), (
-            "blocks/ not auto-created — inconsistent with runs/ behavior"
-        )
+        assert (tmp_path / "data").exists()

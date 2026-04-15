@@ -14,7 +14,6 @@ class TestCLIFlagRouting:
     def test_ladic_dispatches(self):
         with (
             patch("sys.argv", ["funbuns", "--ladic"]),
-            patch("funbuns.__main__._check_block_data", return_value=True),
             patch("funbuns.ladic.run_ladic_analysis") as mock_ladic,
         ):
             from funbuns.__main__ import main
@@ -24,7 +23,6 @@ class TestCLIFlagRouting:
     def test_spectral_dispatches(self):
         with (
             patch("sys.argv", ["funbuns", "--spectral"]),
-            patch("funbuns.__main__._check_block_data", return_value=True),
             patch("funbuns.spectral.obstruction_indicator", return_value=MagicMock()),
             patch("funbuns.spectral.spectral_analysis_obstruction", return_value=MagicMock()),
             patch("funbuns.spectral.save_analysis"),
@@ -45,7 +43,6 @@ class TestCLIFlagRouting:
     def test_partitions_dispatches_explore(self):
         with (
             patch("sys.argv", ["funbuns", "--partitions"]),
-            patch("funbuns.__main__._check_block_data", return_value=True),
             patch("funbuns.data_exploration.run_exploration") as mock_explore,
         ):
             from funbuns.__main__ import main

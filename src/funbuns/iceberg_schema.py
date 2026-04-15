@@ -7,19 +7,28 @@ Two tables:
     funbuns.primes          — one row per p (including k=0), universe of primes
     funbuns.decompositions  — fact table, one row per (p, m_k, n_k, q_k) with q_k>0
 
-Both are partitioned by identity(batch_id) and sorted by (p) / (p, m_k).
+Both are partitioned by identity(commit_seq) and sorted by (p) / (p, m_k).
 The sort declaration is advisory in PyIceberg 0.11.1 — we enforce it on the
 writer side via pre-sort and validation.
+
+``commit_seq`` is a **write-side flush counter**, not a position along the
+p-axis. Under multiprocessing ingest (``imap_unordered``) workers finish in
+non-deterministic order, so a batch with lower commit_seq may cover a higher
+p-range than a later one. Every (p_lo, p_hi) range is still disjoint and
+contiguous, but ``ORDER BY commit_seq`` does not walk primes in p-order.
+Queries that want p-ordering must sort on ``p`` (or read the manifest's
+``p.lower_bound`` per file). Resume state is derived from ``max(p)``, not
+from ``max(commit_seq)``, so reorder is safe for the write path.
 
 Public surface:
 
     open_catalog(warehouse_root=None) -> SqlCatalog
     ensure_tables(cat) -> (primes_tbl, decomp_tbl)
-    validate_primes_batch(df, *, batch_id)
-    validate_decomp_batch(df, *, batch_id)
+    validate_primes_batch(df, *, commit_seq)
+    validate_decomp_batch(df, *, commit_seq)
     validate_cross(primes_df, decomp_df)
-    build_file_kv(pa_table, *, table_name, batch_id, ...) -> dict[bytes, bytes]
-    write_batch(cat, *, batch_id, primes_df, decomp_df, staging_dir=None) -> WriteBatchResult
+    build_file_kv(pa_table, *, table_name, commit_seq, ...) -> dict[bytes, bytes]
+    write_batch(cat, *, commit_seq, primes_df, decomp_df, staging_dir=None) -> WriteBatchResult
 
 Write path does not go through polars.DataFrame.write_iceberg. PyIceberg 0.11.1
 ignores row-group sizing, does not sort on write, and does not pass through
@@ -86,7 +95,7 @@ DECOMP_IDENT = f"{NAMESPACE}.decompositions"
 PRIMES_SCHEMA = Schema(
     NestedField(1, "p", LongType(), required=False),
     NestedField(2, "k", IntegerType(), required=False),
-    NestedField(3, "batch_id", IntegerType(), required=False),
+    NestedField(3, "commit_seq", IntegerType(), required=False),
 )
 
 DECOMP_SCHEMA = Schema(
@@ -94,14 +103,14 @@ DECOMP_SCHEMA = Schema(
     NestedField(2, "m_k", IntegerType(), required=False),
     NestedField(3, "n_k", IntegerType(), required=False),
     NestedField(4, "q_k", LongType(), required=False),
-    NestedField(5, "batch_id", IntegerType(), required=False),
+    NestedField(5, "commit_seq", IntegerType(), required=False),
 )
 
 PRIMES_PARTITION_SPEC = PartitionSpec(
-    PartitionField(source_id=3, field_id=1000, transform=IdentityTransform(), name="batch_id")
+    PartitionField(source_id=3, field_id=1000, transform=IdentityTransform(), name="commit_seq")
 )
 DECOMP_PARTITION_SPEC = PartitionSpec(
-    PartitionField(source_id=5, field_id=1000, transform=IdentityTransform(), name="batch_id")
+    PartitionField(source_id=5, field_id=1000, transform=IdentityTransform(), name="commit_seq")
 )
 
 PRIMES_SORT_ORDER = SortOrder(
@@ -170,9 +179,9 @@ def open_catalog(warehouse_root: Path | None = None) -> SqlCatalog:
     )
 
 
-def _partition_dir(tbl: Table, batch_id: int) -> Path:
+def _partition_dir(tbl: Table, commit_seq: int) -> Path:
     location = tbl.location().replace("file://", "")
-    return Path(location) / "data" / f"batch_id={batch_id}"
+    return Path(location) / "data" / f"commit_seq={commit_seq}"
 
 
 def ensure_tables(cat: SqlCatalog) -> tuple[Table, Table]:
@@ -192,6 +201,27 @@ def ensure_tables(cat: SqlCatalog) -> tuple[Table, Table]:
         properties=TABLE_PROPERTIES,
     )
     return primes_tbl, decomp_tbl
+
+
+def migrate_rename_batch_id_to_commit_seq(cat: SqlCatalog) -> None:
+    """
+    One-shot schema migration for catalogs created before the rename.
+
+    Renames ``batch_id`` → ``commit_seq`` on both ``funbuns.primes`` and
+    ``funbuns.decompositions`` via iceberg's ``update_schema().rename_column``.
+    Field-ids are preserved, so historical data files remain readable under the
+    new name without rewrite. Safe to run multiple times: if the old name is
+    already gone, pyiceberg raises and this function swallows the no-op.
+
+    Call once on the production catalog after upgrading funbuns past the
+    rename commit; subsequent opens read the new name transparently.
+    """
+    for ident in (PRIMES_IDENT, DECOMP_IDENT):
+        tbl = cat.load_table(ident)
+        if "commit_seq" in tbl.schema().column_names:
+            continue
+        with tbl.update_schema() as us:
+            us.rename_column("batch_id", "commit_seq")
 
 
 # ---------------------------------------------------------------------------
@@ -229,7 +259,7 @@ def build_file_kv(
     pa_table: pa.Table,
     *,
     table_name: str,
-    batch_id: int,
+    commit_seq: int,
     generator: str = "funbuns-core",
 ) -> dict[bytes, bytes]:
     """
@@ -257,7 +287,7 @@ def build_file_kv(
         "funbuns.algorithm_version": _PACKAGE_VERSION if isinstance(_PACKAGE_VERSION, str) else "unknown",
         "funbuns.algorithm_git_sha": _git_sha(),
         "funbuns.table": table_name,
-        "funbuns.batch_id": str(batch_id),
+        "funbuns.commit_seq": str(commit_seq),
         "funbuns.p_min": str(p_min),
         "funbuns.p_max": str(p_max),
         "funbuns.n_rows": str(n_rows),
@@ -291,8 +321,8 @@ class ValidationError(AssertionError):
     pass
 
 
-def validate_primes_batch(df: pl.DataFrame, *, batch_id: int) -> None:
-    if df.schema != {"p": pl.Int64, "k": pl.Int32, "batch_id": pl.Int32}:
+def validate_primes_batch(df: pl.DataFrame, *, commit_seq: int) -> None:
+    if df.schema != {"p": pl.Int64, "k": pl.Int32, "commit_seq": pl.Int32}:
         raise ValidationError(f"primes schema mismatch: {df.schema}")
     if df.null_count().sum_horizontal().item() != 0:
         raise ValidationError("primes contains nulls")
@@ -303,19 +333,19 @@ def validate_primes_batch(df: pl.DataFrame, *, batch_id: int) -> None:
         raise ValidationError("primes.p not ascending")
     if p.n_unique() != df.height:
         raise ValidationError("primes.p has duplicates")
-    if not (df["batch_id"] == batch_id).all():
-        raise ValidationError(f"primes.batch_id != {batch_id}")
+    if not (df["commit_seq"] == commit_seq).all():
+        raise ValidationError(f"primes.commit_seq != {commit_seq}")
     if (df["k"] < 0).any():
         raise ValidationError("primes.k has negative values")
 
 
-def validate_decomp_batch(df: pl.DataFrame, *, batch_id: int) -> None:
+def validate_decomp_batch(df: pl.DataFrame, *, commit_seq: int) -> None:
     expected = {
         "p": pl.Int64,
         "m_k": pl.Int32,
         "n_k": pl.Int32,
         "q_k": pl.Int64,
-        "batch_id": pl.Int32,
+        "commit_seq": pl.Int32,
     }
     if df.schema != expected:
         raise ValidationError(f"decomp schema mismatch: {df.schema}")
@@ -339,8 +369,8 @@ def validate_decomp_batch(df: pl.DataFrame, *, batch_id: int) -> None:
     )
     if not sort_check["ok"].all():
         raise ValidationError("decomp not sorted by (p, m_k)")
-    if not (df["batch_id"] == batch_id).all():
-        raise ValidationError(f"decomp.batch_id != {batch_id}")
+    if not (df["commit_seq"] == commit_seq).all():
+        raise ValidationError(f"decomp.commit_seq != {commit_seq}")
 
 
 def validate_cross(primes_df: pl.DataFrame, decomp_df: pl.DataFrame) -> None:
@@ -369,7 +399,7 @@ def validate_cross(primes_df: pl.DataFrame, decomp_df: pl.DataFrame) -> None:
 
 @dataclass
 class WriteBatchResult:
-    batch_id: int
+    commit_seq: int
     primes_files: list[Path]
     decomp_files: list[Path]
     primes_rows: int
@@ -421,7 +451,7 @@ def _write_chunks(
     pa_table: pa.Table,
     *,
     table_name: str,
-    batch_id: int,
+    commit_seq: int,
     partition_dir: Path,
     target_rows: int,
     snap_to_p_boundary: bool,
@@ -434,11 +464,11 @@ def _write_chunks(
     try:
         for i, (start, end) in enumerate(bounds):
             chunk = pa_table.slice(start, end - start)
-            kv = build_file_kv(chunk, table_name=table_name, batch_id=batch_id)
+            kv = build_file_kv(chunk, table_name=table_name, commit_seq=commit_seq)
             merged = dict(chunk.schema.metadata or {})
             merged.update(kv)
             chunk = chunk.replace_schema_metadata(merged)
-            name = f"{table_name}_b{batch_id:06d}_{i:03d}.parquet"
+            name = f"{table_name}_b{commit_seq:06d}_{i:03d}.parquet"
             final = partition_dir / name
             tmp = partition_dir / f".{name}.tmp"
             pq.write_table(chunk, tmp, **PARQUET_WRITER_KWARGS)
@@ -466,7 +496,7 @@ def _write_pointer(tbl: Table) -> Path:
 def shape_for_write(
     raw: pl.DataFrame,
     *,
-    batch_id: int,
+    commit_seq: int,
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """
     Transform a raw partition frame {p, m_k, n_k, q_k} into the (primes, decomp)
@@ -483,25 +513,25 @@ def shape_for_write(
             pl.col("m_k").cast(pl.Int32),
             pl.col("n_k").cast(pl.Int32),
             pl.col("q_k").cast(pl.Int64),
-            pl.lit(batch_id, dtype=pl.Int32).alias("batch_id"),
+            pl.lit(commit_seq, dtype=pl.Int32).alias("commit_seq"),
         )
-        .select(["p", "m_k", "n_k", "q_k", "batch_id"])
+        .select(["p", "m_k", "n_k", "q_k", "commit_seq"])
     )
     primes = (
         src.group_by("p")
         .agg((pl.col("q_k") > 0).sum().cast(pl.Int32).alias("k"))
         .with_columns(
             pl.col("p").cast(pl.Int64),
-            pl.lit(batch_id, dtype=pl.Int32).alias("batch_id"),
+            pl.lit(commit_seq, dtype=pl.Int32).alias("commit_seq"),
         )
-        .select(["p", "k", "batch_id"])
+        .select(["p", "k", "commit_seq"])
     )
     return primes, decomp
 
 
 class IcebergWriter:
     """
-    Live-path writer: owns a catalog handle and a monotonic batch_id counter,
+    Live-path writer: owns a catalog handle and a monotonic commit_seq counter,
     initialized from existing iceberg manifest state. Each flush() call shapes
     a raw partition frame, commits a new batch, and advances the counter.
 
@@ -510,14 +540,14 @@ class IcebergWriter:
 
     Attributes:
         cat: active SqlCatalog handle.
-        next_batch_id: next batch_id to be assigned on flush().
+        next_commit_seq: next commit_seq to be assigned on flush().
         resume_p: max prime already committed, or 0 if the tables are empty.
     """
 
     def __init__(self, cat: SqlCatalog | None = None):
         self.cat = cat if cat is not None else open_catalog()
         ensure_tables(self.cat)
-        self.next_batch_id, self.resume_p = self._init_state()
+        self.next_commit_seq, self.resume_p = self._init_state()
 
     def _init_state(self) -> tuple[int, int]:
         try:
@@ -531,39 +561,39 @@ class IcebergWriter:
             return 0, 0
         bounds = files.select(
             pl.col("readable_metrics")
-            .struct.field("batch_id")
+            .struct.field("commit_seq")
             .struct.field("upper_bound")
             .max()
-            .alias("max_batch"),
+            .alias("max_seq"),
             pl.col("readable_metrics")
             .struct.field("p")
             .struct.field("upper_bound")
             .max()
             .alias("max_p"),
         )
-        max_batch = bounds["max_batch"].item()
+        max_seq = bounds["max_seq"].item()
         max_p = bounds["max_p"].item()
-        if max_batch is None or max_p is None:
+        if max_seq is None or max_p is None:
             return 0, 0
-        return int(max_batch) + 1, int(max_p)
+        return int(max_seq) + 1, int(max_p)
 
     def flush(self, raw_df: pl.DataFrame) -> WriteBatchResult:
-        batch_id = self.next_batch_id
-        primes_df, decomp_df = shape_for_write(raw_df, batch_id=batch_id)
+        commit_seq = self.next_commit_seq
+        primes_df, decomp_df = shape_for_write(raw_df, commit_seq=commit_seq)
         result = write_batch(
             self.cat,
-            batch_id=batch_id,
+            commit_seq=commit_seq,
             primes_df=primes_df,
             decomp_df=decomp_df,
         )
-        self.next_batch_id += 1
+        self.next_commit_seq += 1
         return result
 
 
 def write_batch(
     cat: SqlCatalog,
     *,
-    batch_id: int,
+    commit_seq: int,
     primes_df: pl.DataFrame,
     decomp_df: pl.DataFrame,
 ) -> WriteBatchResult:
@@ -583,8 +613,8 @@ def write_batch(
     """
     primes_df = primes_df.sort("p")
     decomp_df = decomp_df.sort(["p", "m_k"])
-    validate_primes_batch(primes_df, batch_id=batch_id)
-    validate_decomp_batch(decomp_df, batch_id=batch_id)
+    validate_primes_batch(primes_df, commit_seq=commit_seq)
+    validate_decomp_batch(decomp_df, commit_seq=commit_seq)
     validate_cross(primes_df, decomp_df)
 
     primes_tbl = cat.load_table(PRIMES_IDENT)
@@ -599,16 +629,16 @@ def write_batch(
     primes_files = _write_chunks(
         primes_at,
         table_name="primes",
-        batch_id=batch_id,
-        partition_dir=_partition_dir(primes_tbl, batch_id),
+        commit_seq=commit_seq,
+        partition_dir=_partition_dir(primes_tbl, commit_seq),
         target_rows=primes_target,
         snap_to_p_boundary=False,
     )
     decomp_files = _write_chunks(
         decomp_at,
         table_name="decompositions",
-        batch_id=batch_id,
-        partition_dir=_partition_dir(decomp_tbl, batch_id),
+        commit_seq=commit_seq,
+        partition_dir=_partition_dir(decomp_tbl, commit_seq),
         target_rows=decomp_target,
         snap_to_p_boundary=True,
     )
@@ -622,7 +652,7 @@ def write_batch(
     pointer_files = [_write_pointer(primes_tbl), _write_pointer(decomp_tbl)]
 
     return WriteBatchResult(
-        batch_id=batch_id,
+        commit_seq=commit_seq,
         primes_files=primes_files,
         decomp_files=decomp_files,
         primes_rows=primes_df.height,

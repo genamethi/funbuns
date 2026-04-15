@@ -245,6 +245,13 @@ class TestGracefulSIGINT:
     - No zombie worker processes remain
     """
 
+    @pytest.mark.skip(
+        reason="Tests legacy append_data/runs-dir flush semantics removed in "
+               "the iceberg ingest cutover. Also unsafely writes to the "
+               "production iceberg catalog because iceberg_dir is not "
+               "sandboxed. Needs rewrite against a --temp warehouse polling "
+               "tbl.current_snapshot(); see task #6."
+    )
     def test_sigint_flushes_completed_results(self, tmp_path):
         """After SIGINT, completed batch results must be on disk."""
         runs_dir = tmp_path / "runs"
