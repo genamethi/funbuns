@@ -2,7 +2,7 @@
 Main entry point for prime power partition analysis.
 
 Infrastructure commands (database, web server, notebook) live in
-funbuns-admin. Block management lives in bmgr (block_manager.py).
+funbuns-admin.
 """
 
 import argparse
@@ -20,9 +20,9 @@ import polars as pl
 def main():
     parser = argparse.ArgumentParser(
         description='Prime power partition analysis: p = 2^m + q^n.\n'
-                    'Resumes from last prime saved in data/blocks.\n\n'
-                    'Infrastructure: use funbuns-admin (db, serve, notebook).\n'
-                    'Block management: use bmgr (pixi run bmgr).',
+                    'Resumes from max(p) upper_bound in the iceberg primes\n'
+                    'table manifest metadata (no data-file scan).\n\n'
+                    'Infrastructure: use funbuns-admin (db, serve, notebook).',
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
 
@@ -254,7 +254,6 @@ def main():
     if args.num_primes is None:
         parser.print_help()
         print("\nInfrastructure commands: funbuns-admin db|serve|notebook")
-        print("Block management: pixi run bmgr")
         return
 
     # Determine number of workers
