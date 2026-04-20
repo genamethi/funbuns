@@ -172,8 +172,14 @@ def open_catalog(warehouse_root: Path | None = None) -> Catalog:
     """
     Return an Iceberg catalog handle.
 
-    Production (no args): HiveCatalog via the HMS Thrift endpoint.
-    Override the URI with FUNBUNS_HMS_URI env var.
+    Production (no args): SqlCatalog backed by ``<iceberg_dir>/catalog.db``.
+    No dependency on Hive/HMS/k8s — core.py ingest and polars reads work
+    directly against the filesystem + sqlite. Run ``scripts/sync_hms.py``
+    after a flush to publish the new snapshot to Hive Metastore.
+
+    Set ``FUNBUNS_CATALOG_BACKEND=hive`` to instead open a HiveCatalog at
+    ``FUNBUNS_HMS_URI`` (default ``thrift://localhost:9083``) — useful for
+    scripts that need to round-trip through HMS itself.
 
     Temp/test (warehouse_root given): isolated SqlCatalog backed by SQLite
     in the same directory — no HMS dependency for throwaway runs.
@@ -186,12 +192,20 @@ def open_catalog(warehouse_root: Path | None = None) -> Catalog:
             uri=f"sqlite:///{catalog_db}",
             warehouse=f"file://{warehouse_root}",
         )
-    uri = os.getenv("FUNBUNS_HMS_URI", HMS_URI_DEFAULT)
     warehouse = get_warehouse_dir()
     warehouse.mkdir(parents=True, exist_ok=True)
-    return HiveCatalog(
+    backend = os.getenv("FUNBUNS_CATALOG_BACKEND", "sqlite").lower()
+    if backend == "hive":
+        uri = os.getenv("FUNBUNS_HMS_URI", HMS_URI_DEFAULT)
+        return HiveCatalog(
+            "funbuns",
+            uri=uri,
+            warehouse=f"file://{warehouse}",
+        )
+    catalog_db = get_iceberg_dir() / "catalog.db"
+    return SqlCatalog(
         "funbuns",
-        uri=uri,
+        uri=f"sqlite:///{catalog_db}",
         warehouse=f"file://{warehouse}",
     )
 

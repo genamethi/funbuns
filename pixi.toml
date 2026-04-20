@@ -10,6 +10,7 @@ repository = "https://github.com/genamethi/funbuns"
 notebook = "funbuns-admin notebook"
 kube-down = "scripts/kube-down.sh"
 kube-up = "scripts/kube-up.sh"
+sync-hms = "python scripts/sync_hms.py"
 [tasks.hive]
 cmd = "docker compose up"
 cwd = "docker/hive"

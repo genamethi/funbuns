@@ -185,18 +185,49 @@ Derived:
 Two catalogs point at the same warehouse:
 
 - **SqlCatalog (sqlite):** `/media/extssd/research/dioph.pp/data/iceberg/catalog.db`
-  — what `IcebergWriter.flush` in `core.py` writes to.
-- **HiveCatalog (HMS):** `hivemr3-metastore-0:9850` — what HS2 reads.
+  — what `IcebergWriter.flush` in `core.py` writes to. This is the
+  `open_catalog()` default — no k3s/HMS dependency for ingest.
+- **HiveCatalog (HMS):** `metastore:9850` in-cluster (port-forward 9083
+  locally) — what HS2 reads from, and what Hive SQL queries planned
+  through Tez see.
 
-The sqlite catalog advances atomically on every flush (new
-`00NNN-*.metadata.json`). HMS stays stale until its `metadata_location`
-table property is updated to the new path. `scripts/register_in_hms.py`
-does the registration; for incremental sync after each batch, post-flush
-bump HMS's `metadata_location` via `ALTER TABLE ... SET TBLPROPERTIES`.
+Rationale for keeping them separate: the Iceberg table is a standalone
+artifact (filesystem + catalog.db), usable by polars / rust-iceberg /
+pyiceberg / DuckDB without any running cluster. Ingesting through HMS
+would couple core.py to k3s uptime.
+
+Ingest workflow:
+
+```
+pixi run kube-down                 # free the node for heavy ingest
+funbuns -n ...                     # writes via SqlCatalog, sqlite advances
+pixi run kube-up                   # bring Hive back
+pixi run sync-hms                  # push new metadata_location to HMS
+```
+
+`scripts/sync_hms.py` reads the current `metadata_location` from sqlite
+and bumps HMS's table property to match via
+`alter_table_with_environment_context`. No parquet is rewritten;
+idempotent (safe to re-run). Override endpoints via env:
+
+- `FUNBUNS_CATALOG_URI` — sqlite URI (default points at extssd)
+- `FUNBUNS_HMS_URI` — thrift URI (default `thrift://localhost:9083`)
+- `FUNBUNS_CATALOG_BACKEND=hive` — flip `open_catalog()` to HiveCatalog
+  for scripts that need to round-trip through HMS (e.g. a DDL change
+  that must be visible to Hive immediately).
+
+Recovering from a stale sqlite pointer: the pointer is a single row in
+`iceberg_tables`. If it references a non-existent `00NNN-*.metadata.json`
+(e.g. a partial write from a crashed commit), back up `catalog.db` and
+`UPDATE iceberg_tables SET metadata_location=...` to the highest real
+`00NNN-*.metadata.json` on disk (check `ls -t` on the metadata/
+directory; the file size distinguishes real snapshots from tiny
+re-registration stubs).
 
 Once pyiceberg 0.12 lands in conda-forge (full HMS 4 support including
-`create_table_req` / `commit_table`), we can collapse to a single
-HiveCatalog-writing path.
+`create_table_req` / `commit_table`), collapsing to a single
+HiveCatalog-writing path is an option but not required — the dual-catalog
+split actually buys us ingest independence.
 
 ## Next steps / open questions
 
@@ -278,7 +309,10 @@ Today primes/decompositions are partitioned only by `commit_seq`
 
 ### HMS refresh on ingest
 
-Once `scripts/register_in_hms.py` logic is stable, wire a post-flush
-hook in `IcebergWriter.flush` that bumps HMS `metadata_location`. If
-HMS is unreachable, log and continue — writes to the sqlite catalog
-should never be gated on HMS health.
+Currently manual: run `pixi run sync-hms` after an ingest session. An
+optional post-flush hook in `IcebergWriter.flush` that calls the sync
+when `FUNBUNS_HMS_SYNC=1` is a future refinement — but it must be
+fire-and-forget (socket open failures to `thrift://localhost:9083` must
+not abort the flush). Today's sqlite-first design already guarantees
+that: HMS staleness only affects Hive visibility, never the Iceberg
+truth.
