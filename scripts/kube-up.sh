@@ -21,8 +21,9 @@ kubectl -n "$NS" scale statefulset/hivemr3-metastore --replicas=1 >/dev/null
 kubectl -n "$NS" scale deploy/hivemr3-hiveserver2 --replicas=1 >/dev/null
 
 # If an mr3master deployment still exists from a prior run, bring it back;
-# otherwise the next DAG submission will create a new one.
-for d in $(kubectl -n "$NS" get deploy -l mr3-pod-role=master-role -o name 2>/dev/null); do
+# otherwise the next DAG submission will create a new one. The deployment
+# carries no labels, so match by name prefix (see kube-down.sh for context).
+for d in $(kubectl -n "$NS" get deploy -o name 2>/dev/null | grep '^deployment.apps/mr3master-' || true); do
   kubectl -n "$NS" scale "$d" --replicas=1 >/dev/null || true
 done
 
