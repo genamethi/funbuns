@@ -9,6 +9,7 @@
 use anyhow::{Context, Result, bail};
 use clap::Parser;
 use dsi_bitstream::prelude::BE;
+use dsi_bitstream::impls::buf_bit_writer;
 use indicatif::{ProgressBar, ProgressStyle};
 use std::io::{BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -16,6 +17,7 @@ use std::path::{Path, PathBuf};
 use funbuns_graph::dense_id::DenseIdMap;
 use funbuns_graph::io::discover_blocks;
 use funbuns_graph::label_codec;
+use webgraph::graphs::bvgraph::{BvComp, CompFlags, DynCodesEncoder, OffsetsWriter};
 
 #[derive(Parser)]
 #[command(name = "build-graph", about = "Build compressed WebGraph from parquet blocks")]
@@ -294,64 +296,112 @@ fn build_graph_direction(
     let num_nodes = id_map.len();
     let memory_usage = webgraph::utils::MemoryUsage::MemorySize(sort_memory);
 
-    // ── Pass 1: External sort with u8 labels → write label file ────────
-    {
-        let sort_dir = tempfile::Builder::new()
-            .prefix("graph_sort_lbl_")
-            .tempdir_in(out_dir)?;
-        let codec = label_codec::u8_codec();
-        let mut sorter = webgraph::utils::SortPairs::new_labeled(
-            memory_usage, sort_dir.path(), codec,
-        )?;
+    // Labeled external sort carries (src, dst, m) through the sort.
+    // The push loop below iterates sorted triples, deduplicates (src, dst),
+    // pushes successor lists to BvComp, and writes one m per edge to labels.
+    let sort_dir = tempfile::Builder::new()
+        .prefix("graph_sort_")
+        .tempdir_in(out_dir)?;
+    let codec = label_codec::u8_codec();
+    let mut sorter = webgraph::utils::SortPairs::new_labeled(
+        memory_usage, sort_dir.path(), codec,
+    )?;
 
-        let pb = make_pb(blocks.len() as u64, "blocks (labeled sort)");
-        for block_path in blocks {
-            push_arcs_from_block(block_path, id_map, direction, &mut sorter)?;
-            pb.inc(1);
-        }
-        pb.finish();
+    let pb = make_pb(blocks.len() as u64, "blocks (sort)");
+    for block_path in blocks {
+        push_arcs_from_block(block_path, id_map, direction, &mut sorter)?;
+        pb.inc(1);
+    }
+    pb.finish();
 
-        eprintln!("  Writing labels...");
-        let sorted_iter = sorter.iter()?;
-        let mut label_writer = BufWriter::with_capacity(4 * 1024 * 1024, std::fs::File::create(label_path)?);
-        let mut label_count: u64 = 0;
-        for arc in sorted_iter {
-            let ((_src, _dst), m) = arc;
-            label_writer.write_all(&[m])?;
-            label_count += 1;
+    // ── Stream sorted arcs → push-based BvComp + flat labels ────────────
+    //
+    // Single pass: iterate sorted (src, dst, m) triples, group by src,
+    // push successor lists directly into BvComp. No intermediate temp
+    // file needed (BvComp::push doesn't require Clone).
+    //
+    // Labels are a flat u8 array: one m value per edge in graph order.
+    // Multi-m edges only exist for p=11, q=3 (m∈{1,3}); the duplicate
+    // (src, dst) pair is skipped and the second m is hardcoded.
+    eprintln!("  Streaming sorted arcs → BvComp + labels...");
+    let sorted_iter = sorter.iter()?;
+
+    // Label file: one u8 per edge, same order as BvGraph edges
+    let mut label_writer = BufWriter::with_capacity(4 << 20, std::fs::File::create(label_path)?);
+
+    // Set up BvComp directly via push API
+    let comp_flags = CompFlags::default();
+    let graph_path = graph_basename.with_extension("graph");
+    let offsets_path = graph_basename.with_extension("offsets");
+
+    let bit_write = buf_bit_writer::from_path::<BE, usize>(&graph_path)
+        .with_context(|| format!("creating {}", graph_path.display()))?;
+    let codes_writer = DynCodesEncoder::new(bit_write, &comp_flags)?;
+    let offset_writer = OffsetsWriter::from_path(&offsets_path, true)?;
+
+    let mut bvcomp = BvComp::new(
+        codes_writer,
+        offset_writer,
+        comp_flags.compression_window,
+        comp_flags.max_ref_count,
+        comp_flags.min_interval_length,
+        0,
+    );
+
+    let mut cur_node: usize = 0;
+    let mut succs: Vec<usize> = Vec::new();
+    let mut prev_pair: Option<(usize, usize)> = None;
+    let mut label_count: u64 = 0;
+    let mut dup_count: u64 = 0;
+
+    for ((src, dst), m) in sorted_iter {
+        // Dedup (src, dst) — only p=11, q=3 produces duplicates
+        if prev_pair == Some((src, dst)) {
+            dup_count += 1;
+            continue;
         }
-        label_writer.flush()?;
-        eprintln!("  {} labels → {}", label_count, label_path.display());
+        prev_pair = Some((src, dst));
+
+        // If src advanced, flush accumulated successors and push empties
+        if src != cur_node {
+            bvcomp.push(succs.drain(..))?;
+            cur_node += 1;
+            while cur_node < src {
+                bvcomp.push(std::iter::empty::<usize>())?;
+                cur_node += 1;
+            }
+        }
+
+        succs.push(dst);
+        label_writer.write_all(&[m])?;
+        label_count += 1;
     }
 
-    // ── Pass 2: External sort without labels → BvGraph compression ─────
-    {
-        let sort_dir = tempfile::Builder::new()
-            .prefix("graph_sort_str_")
-            .tempdir_in(out_dir)?;
-        let mut sorter = webgraph::utils::SortPairs::new(
-            memory_usage, sort_dir.path(),
-        )?;
-
-        let pb = make_pb(blocks.len() as u64, "blocks (graph sort)");
-        for block_path in blocks {
-            push_arcs_unlabeled(block_path, id_map, direction, &mut sorter)?;
-            pb.inc(1);
-        }
-        pb.finish();
-
-        eprintln!("  Compressing...");
-        let sorted_iter = sorter.iter()?;
-        let graph = webgraph::graphs::arc_list_graph::ArcListGraph::new(
-            num_nodes,
-            sorted_iter.map(|(pair, _)| pair),
-        );
-
-        webgraph::graphs::bvgraph::BvComp::with_basename(graph_basename)
-            .comp_graph::<BE>(&graph)?;
-
-        eprintln!("  Graph → {}.graph", graph_basename.display());
+    // Flush last node and all remaining empty nodes
+    bvcomp.push(succs.drain(..))?;
+    cur_node += 1;
+    while cur_node < num_nodes {
+        bvcomp.push(std::iter::empty::<usize>())?;
+        cur_node += 1;
     }
+
+    label_writer.flush()?;
+
+    let stats = bvcomp.flush()?;
+    eprintln!("  {} labels ({} duplicate pairs skipped)", label_count, dup_count);
+    eprintln!("  {} nodes, {} arcs, {:.2} bits/link",
+              stats.num_nodes, stats.num_arcs,
+              stats.written_bits as f64 / stats.num_arcs.max(1) as f64);
+    eprintln!("  Labels  → {}", label_path.display());
+
+    // Write .properties file
+    let properties_path = graph_basename.with_extension("properties");
+    let properties = comp_flags.to_properties::<BE>(
+        stats.num_nodes, stats.num_arcs, stats.written_bits,
+    )?;
+    std::fs::write(&properties_path, &properties)?;
+
+    eprintln!("  Graph   → {}.graph", graph_basename.display());
 
     Ok(())
 }
@@ -403,46 +453,6 @@ fn push_arcs_from_block<C: webgraph::utils::BatchCodec<Label = u8>>(
     Ok(())
 }
 
-/// Push unlabeled arcs from a single block into the sorter.
-fn push_arcs_unlabeled(
-    block_path: &PathBuf,
-    id_map: &DenseIdMap,
-    direction: Direction,
-    sorter: &mut webgraph::utils::SortPairs,
-) -> Result<()> {
-    use arrow::array::AsArray;
-    use arrow::datatypes::Int64Type;
-    use parquet::arrow::arrow_reader::ParquetRecordBatchReaderBuilder;
-
-    let reader = ParquetRecordBatchReaderBuilder::try_new(std::fs::File::open(block_path)?)?
-        .with_batch_size(1_000_000)
-        .build()?;
-
-    for batch in reader {
-        let batch = batch?;
-        let p_col = batch.column_by_name("p").context("missing p")?.as_primitive::<Int64Type>();
-        let q_col = batch.column_by_name("q_k").context("missing q_k")?.as_primitive::<Int64Type>();
-
-        let p_vals = p_col.values();
-        let q_vals = q_col.values();
-
-        for i in 0..batch.num_rows() {
-            let q = q_vals[i];
-            if q == 0 { continue; }
-
-            let p_id = id_map.prime_to_id(p_vals[i] as u64).unwrap();
-            let q_id = id_map.prime_to_id(q as u64).unwrap();
-
-            let (src, dst) = match direction {
-                Direction::Forward => (q_id, p_id),
-                Direction::Transpose => (p_id, q_id),
-            };
-            sorter.push(src, dst)?;
-        }
-    }
-
-    Ok(())
-}
 
 fn make_pb(total: u64, item: &str) -> ProgressBar {
     let pb = ProgressBar::new(total);

@@ -157,7 +157,10 @@ class PPBatchFeeder:
 
         self.batch_size = batch_size
         self.num_batches = num_primes // batch_size
-        # Single call: 0-indexed position of the first prime to process
+        # prime_pi is 1-based, P.unrank is 0-based.  prime_pi(p) fed to
+        # unrank yields next_prime(p), which is correct for resume (where
+        # init_p is the last *processed* prime).  For explicit -i starts,
+        # the caller must pass the prime *before* the desired start.
         self.start_idx = int(prime_pi(init_p))
 
         if verbose:

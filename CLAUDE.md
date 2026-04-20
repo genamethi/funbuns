@@ -67,20 +67,11 @@ funbuns --view                  # Altair dashboard
 
 ### `funbuns-admin` -- infrastructure (src/funbuns/admin.py)
 ```
-funbuns-admin db build           # one-time DuckDB index build
+funbuns-admin db build           # one-time DuckDB index build (legacy — DuckDB retirement pending, issue #2)
 funbuns-admin db sync            # incremental sync with new parquet
 funbuns-admin db status          # show database stats
 funbuns-admin serve [--port N]   # FastAPI partition browser (default: 8081)
 funbuns-admin notebook [--port N] # Jupyter (default: 8888)
-```
-
-### `bmgr` -- block management (src/funbuns/block_manager.py)
-```
-pixi run bmgr                    # basic block status
-pixi run bmgr-integrity          # data integrity check
-pixi run bmgr-integrate          # integration check
-pixi run bmgr-diagnose           # diagnose issues
-pixi run bmgr-show-runs          # show computation run history
 ```
 
 ### Pixi tasks (pixi.toml)
@@ -95,23 +86,40 @@ pixi run build-native            # cargo build --release
 
 ## Data
 
-Latest cached stats (logged as `dataset_summary` events after each
-`bmgr --integrate-check` and `sync-db`):
-```
-jq -s '[.[] | select(.event=="dataset_summary")] | last' logs/bmgr.jsonl
-jq -s '[.[] | select(.event=="dataset_summary")] | last' logs/admin.jsonl
-```
+Canonical store: **Apache Iceberg catalog** at
+`/media/extssd/research/dioph.pp/data/iceberg/` with `funbuns.primes` and
+`funbuns.decompositions` tables. Write-side schema, partitioning, and
+validation invariants are documented in `markdown/iceberg_data_setup.md`;
+`src/funbuns/iceberg_schema.py` is authoritative.
 
-- **Block parquet files**: `/media/extssd/research/dioph.pp/data/blocks/pp_b*.parquet`
-  - Schema: `{p: u64, m_k: u32, n_k: u32, q_k: u64}`
-  - Obstructed primes have q_k = 0
-  - 2026-03-0?: 2,675 blocks, ~1.17B primes
-  - 2026-04-06: 20,289 blocks, ~10.1B primes, max p ≈ 254.7B
-- **DuckDB**: `data/funbuns.duckdb`
-  - `partition_counts` TABLE (indexed): p, k
-  - `decompositions` VIEW: zero-copy scan over parquet files
-  - Temp directory on SSD: `/media/extssd/research/dioph.pp/data/duckdb_tmp/`
-- **Config**: `pixi.toml [tool.funbuns]` has buffer_size, data paths, ports
+Current state (2026-04-19 post sort_order_id backfill):
+- 505 batches (`commit_seq` 0–504) — post-cutover ingest appends new
+  commit_seqs directly from `core.PPConsumer` via `IcebergWriter.flush`.
+- `primes`: 10,099,850,000 rows; `decompositions`: 19,011,566,647 rows.
+- `k_max = 16`; max p ≈ 254.7B.
+- Invariant: `sum(primes.k) == rows(decompositions)`.
+- All manifest entries now carry `sort_order_id=1` (pyiceberg 0.11.1
+  patch in `src/funbuns/_patches.py` stamps new writes; existing 505
+  files were backfilled via `scripts/backfill_sort_order_id.py` — one
+  OVERWRITE snapshot per table, no parquet data rewritten).
+
+Prior (2026-04-14 post-cutover): 504 batches; primes 10,098,850,000;
+decompositions 19,009,703,663 — numbers were from a slightly stale
+manifest read and were corrected on 2026-04-19.
+
+`commit_seq` is a **write-side flush counter**, not a p-axis index. Under
+`imap_unordered`, a batch with lower `commit_seq` can cover a higher
+p-range than a later one. Query on `p` for p-ordering; resume state reads
+`max(p)` from manifest statistics, not `max(commit_seq)`. See
+`tests/test_iceberg_commit_seq.py` for the pinned invariant.
+
+Legacy stores:
+- **Block parquet files**: `blocks/pp_b*.parquet` — **deleted** in step 6
+  (130GB). Analysis modules that still glob this path will fail on first
+  call; see `markdown/remaining_consumers.md`.
+- **DuckDB**: `data/funbuns.duckdb` still functional for `funbuns-admin
+  db *` and the webserver. Retirement tracked as issue #2.
+- **Config**: `pixi.toml [tool.funbuns]` has buffer_size, data paths, ports.
 
 ## Algorithm and library rules
 
@@ -152,16 +160,14 @@ Current research directions (ranked):
 3. q-adic tower -- Iwasawa-style limit behavior
 4. Engineering cleanup -- stale data, deprecated APIs
 
-## File overview (26 source files)
+## File overview
 
 ### Core pipeline
 | File | Role |
 |------|------|
-| `src/funbuns/core.py` | Parallel prime partition generation (imap_unordered, index-based dispatch) |
-| `src/funbuns/block_manager.py` | Block file management, integrity checks, run history |
-| `src/funbuns/block_catalog.py` | Block metadata catalog |
+| `src/funbuns/core.py` | Parallel prime partition generation (imap_unordered, index-based dispatch); `PPConsumer.save_callback` points at `IcebergWriter.flush` |
+| `src/funbuns/iceberg_schema.py` | Iceberg catalog, schemas, `IcebergWriter` (direct-to-iceberg flush), `shape_for_write`, validators |
 | `src/funbuns/dataprep.py` | Data preparation utilities |
-| `src/funbuns/data_integrity.py` | Data integrity validation |
 | `src/funbuns/utils.py` | Config loading, JournalWriter (JSONL), get_data_dir() |
 
 ### Rust native plugin
@@ -187,9 +193,8 @@ Current research directions (ranked):
 | `src/funbuns/__main__.py` | CLI entry point (math analysis only) |
 | `src/funbuns/admin.py` | Infrastructure CLI: db, serve, notebook |
 | `src/funbuns/webserver.py` | FastAPI partition browser (port 8081) |
-| `src/funbuns/querydb.py` | DuckDB backend (partition_counts + decompositions) |
+| `src/funbuns/querydb.py` | DuckDB backend (partition_counts + decompositions) — still globs legacy `blocks/` |
 | `src/funbuns/viewer.py` | Altair dashboard generator |
-| `src/funbuns/run_ingester.py` | Run ingestion utilities |
 
 ### Notebooks and scripts
 | File | Role |
@@ -272,3 +277,8 @@ See memory files for details. Key items:
 3. Viewer deprecation (`streaming=True` -> `engine="streaming"`)
 4. `--paranoid` mode (recompute from source, don't trust metadata)
 5. DuckDB partial results investigation (q=3 counts truncated)
+6. Rewrite SIGINT durability test against a `--temp` iceberg warehouse
+   (polls `tbl.current_snapshot()`); currently skipped in
+   `tests/test_core.py::TestGracefulSIGINT`.
+7. Port analysis-module consumers off legacy `blocks/` glob onto
+   `pl.scan_iceberg`. See `markdown/remaining_consumers.md`.

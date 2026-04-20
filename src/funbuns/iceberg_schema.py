@@ -22,7 +22,7 @@ from ``max(commit_seq)``, so reorder is safe for the write path.
 
 Public surface:
 
-    open_catalog(warehouse_root=None) -> SqlCatalog
+    open_catalog(warehouse_root=None) -> Catalog
     ensure_tables(cat) -> (primes_tbl, decomp_tbl)
     validate_primes_batch(df, *, commit_seq)
     validate_decomp_batch(df, *, commit_seq)
@@ -71,6 +71,8 @@ from typing import Any
 import polars as pl
 import pyarrow as pa
 import pyarrow.parquet as pq
+from pyiceberg.catalog import Catalog
+from pyiceberg.catalog.hive import HiveCatalog
 from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.io.pyarrow import schema_to_pyarrow
 from pyiceberg.partitioning import PartitionField, PartitionSpec
@@ -163,18 +165,33 @@ def get_warehouse_dir() -> Path:
     return get_iceberg_dir() / "warehouse"
 
 
-def get_catalog_db_path() -> Path:
-    return get_iceberg_dir() / "catalog.db"
+HMS_URI_DEFAULT = "thrift://localhost:9083"
 
 
-def open_catalog(warehouse_root: Path | None = None) -> SqlCatalog:
-    iceberg_root = warehouse_root.parent if warehouse_root else get_iceberg_dir()
-    warehouse = warehouse_root or (iceberg_root / "warehouse")
-    catalog_db = iceberg_root / "catalog.db"
+def open_catalog(warehouse_root: Path | None = None) -> Catalog:
+    """
+    Return an Iceberg catalog handle.
+
+    Production (no args): HiveCatalog via the HMS Thrift endpoint.
+    Override the URI with FUNBUNS_HMS_URI env var.
+
+    Temp/test (warehouse_root given): isolated SqlCatalog backed by SQLite
+    in the same directory — no HMS dependency for throwaway runs.
+    """
+    if warehouse_root is not None:
+        catalog_db = warehouse_root.parent / "catalog.db"
+        warehouse_root.mkdir(parents=True, exist_ok=True)
+        return SqlCatalog(
+            "funbuns",
+            uri=f"sqlite:///{catalog_db}",
+            warehouse=f"file://{warehouse_root}",
+        )
+    uri = os.getenv("FUNBUNS_HMS_URI", HMS_URI_DEFAULT)
+    warehouse = get_warehouse_dir()
     warehouse.mkdir(parents=True, exist_ok=True)
-    return SqlCatalog(
+    return HiveCatalog(
         "funbuns",
-        uri=f"sqlite:///{catalog_db}",
+        uri=uri,
         warehouse=f"file://{warehouse}",
     )
 
@@ -184,7 +201,7 @@ def _partition_dir(tbl: Table, commit_seq: int) -> Path:
     return Path(location) / "data" / f"commit_seq={commit_seq}"
 
 
-def ensure_tables(cat: SqlCatalog) -> tuple[Table, Table]:
+def ensure_tables(cat: Catalog) -> tuple[Table, Table]:
     cat.create_namespace_if_not_exists(NAMESPACE)
     primes_tbl = cat.create_table_if_not_exists(
         identifier=PRIMES_IDENT,
@@ -203,7 +220,19 @@ def ensure_tables(cat: SqlCatalog) -> tuple[Table, Table]:
     return primes_tbl, decomp_tbl
 
 
-def migrate_rename_batch_id_to_commit_seq(cat: SqlCatalog) -> None:
+def scan_primes(cat: Catalog | None = None) -> pl.LazyFrame:
+    """Lazy scan over ``funbuns.primes`` with predicate pushdown via manifests."""
+    cat = cat or open_catalog()
+    return pl.scan_iceberg(cat.load_table(PRIMES_IDENT))
+
+
+def scan_decompositions(cat: Catalog | None = None) -> pl.LazyFrame:
+    """Lazy scan over ``funbuns.decompositions`` with predicate pushdown via manifests."""
+    cat = cat or open_catalog()
+    return pl.scan_iceberg(cat.load_table(DECOMP_IDENT))
+
+
+def migrate_rename_batch_id_to_commit_seq(cat: Catalog) -> None:
     """
     One-shot schema migration for catalogs created before the rename.
 
@@ -539,12 +568,12 @@ class IcebergWriter:
     callback (writer.flush) into PPConsumer.
 
     Attributes:
-        cat: active SqlCatalog handle.
+        cat: active Catalog handle.
         next_commit_seq: next commit_seq to be assigned on flush().
         resume_p: max prime already committed, or 0 if the tables are empty.
     """
 
-    def __init__(self, cat: SqlCatalog | None = None):
+    def __init__(self, cat: Catalog | None = None):
         self.cat = cat if cat is not None else open_catalog()
         ensure_tables(self.cat)
         self.next_commit_seq, self.resume_p = self._init_state()
@@ -591,7 +620,7 @@ class IcebergWriter:
 
 
 def write_batch(
-    cat: SqlCatalog,
+    cat: Catalog,
     *,
     commit_seq: int,
     primes_df: pl.DataFrame,

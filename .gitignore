@@ -8,6 +8,9 @@ __pycache__
 funbuns-native/debug
 target
 
+# external MR3 distribution (separate inner git repo under mr3/.git)
+mr3/
+
 **/*.rs.bk
 
 **/mutants.out*/
