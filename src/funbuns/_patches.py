@@ -40,4 +40,32 @@ def _patch_pyiceberg_sort_order_id() -> None:
     _m.parquet_file_to_data_file = _patched
 
 
+def _patch_hive_metastore_get_table() -> None:
+    """
+    pyiceberg 0.11.1's ``HiveCatalog`` calls the deprecated Thrift method
+    ``get_table(dbname=..., tbl_name=...)``. Hive Metastore 4 no longer
+    exposes that method and raises ``TApplicationException: Invalid method
+    name: 'get_table'``. The newer ``get_table_req(GetTableRequest)`` is
+    already present in pyiceberg's bundled ``hive_metastore`` IDL, so we
+    redirect the old call to it at the Thrift ``Client`` class level. All
+    pyiceberg load/rename paths then work against HMS 4 transparently.
+    Remove when pyiceberg ships a version that uses ``get_table_req``
+    natively.
+    """
+    from hive_metastore.ThriftHiveMetastore import Client
+    from hive_metastore.ttypes import GetTableRequest
+
+    if getattr(Client.get_table, "_funbuns_patched", False):
+        return
+
+    def _patched(self, dbname=None, tbl_name=None):
+        return self.get_table_req(
+            GetTableRequest(dbName=dbname, tblName=tbl_name)
+        ).table
+
+    _patched._funbuns_patched = True  # type: ignore[attr-defined]
+    Client.get_table = _patched
+
+
 _patch_pyiceberg_sort_order_id()
+_patch_hive_metastore_get_table()
