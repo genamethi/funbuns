@@ -167,17 +167,31 @@ def _build_temp_iceberg_writer():
 
 def setup_analysis_mode(args, config):
     """
-    Setup generation mode: build the iceberg writer and pick init_p.
-
-    Returns:
-        tuple: (init_p, writer, info) where info is a human-readable
-        description of where data is being written (warehouse path for --temp,
-        None for the default catalog).
+    Resolve (init_p, writer, temp_root) from args. Handles all four
+    combinations of --temp and --init. --init skips the resume scan and
+    starts at the prime before args.init (PPBatchFeeder semantics:
+    init_p is the last *processed* prime, so we pass previous_prime to
+    include args.init itself). --temp builds an isolated per-run
+    catalog; absent --temp the canonical catalog is used.
     """
     if args.temp:
         writer, temp_root = _build_temp_iceberg_writer()
-        return 2, writer, temp_root
-    return (*setup_resume_mode(args.verbose), None)
+    else:
+        writer = None
+        temp_root = None
+
+    if args.init is not None:
+        from sage.all import Integer, previous_prime
+        init_p = int(previous_prime(Integer(args.init)))
+        if writer is None:
+            from .iceberg_schema import IcebergWriter
+            writer = IcebergWriter()
+    elif args.temp:
+        init_p = 2
+    else:
+        init_p, writer = setup_resume_mode(args.verbose)
+
+    return init_p, writer, temp_root
 
 
 def setup_resume_mode(verbose):

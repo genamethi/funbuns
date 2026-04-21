@@ -12,7 +12,7 @@ import psutil
 from .core import PPManager
 from .utils import (setup_logging, get_config, setup_analysis_mode,
                     JournalWriter)
-from .dataprep import prepare_prime_powers
+#from .dataprep import prepare_prime_powers
 from .viewer import generate_dashboard
 import polars as pl
 
@@ -40,8 +40,8 @@ def main():
                      help='Specify non-default data location')
     gen.add_argument('-i', '--init', type=int, default=None, metavar='P',
                      help='Override resume prime (start generation from prime P)')
-    gen.add_argument('-g', '--genpp', type=int, metavar='N',
-                     help='Prepare prime powers data for first N primes (p^1 through p^100)')
+#   gen.add_argument('-g', '--genpp', type=int, metavar='N',
+#                 help='Prepare prime powers data for first N primes (p^1 through p^100)')
 
     # --- Cohomological / algebraic analysis ---
     cohom = parser.add_argument_group('cohomological analysis',
@@ -128,8 +128,8 @@ def main():
     analysis_modes = []
     if args.view:
         analysis_modes.append('view')
-    if args.genpp:
-        analysis_modes.append('genpp')
+#    if args.genpp:
+#        analysis_modes.append('genpp')
     if args.ladic:
         analysis_modes.append('ladic')
     if args.ladic_gap is not None:
@@ -174,9 +174,10 @@ def main():
         return
 
     # Handle prep mode
-    if args.genpp:
-        prepare_prime_powers(args.genpp)
-        return
+    #Retiring this
+    #if args.genpp:
+    #    prepare_prime_powers(args.genpp)
+    #    return
 
     # Handle gap-filling (standalone, doesn't need block data check for arbitrary primes)
     if args.ladic_gap is not None:
@@ -279,26 +280,11 @@ def main():
                 num_primes=args.num_primes, batch_size=args.batch_size,
                 cores=cores, buffer_size=buffer_size)
 
-    # --init skips the resume scan entirely.
-    # PPBatchFeeder treats init_p as the last *processed* prime (resume
-    # semantics: start_idx = prime_pi(init_p), then P.unrank gives the
-    # next prime).  For -i we want to *include* the given prime, so pass
-    # the prime just before it.
+    init_p, writer, temp_root = setup_analysis_mode(args, config)
+    if temp_root is not None:
+        print(f"Running in temporary mode: {temp_root}")
     if args.init is not None:
-        from sage.all import Integer, previous_prime
-        from .utils import _build_temp_iceberg_writer
-        from .iceberg_schema import IcebergWriter
-        init_p = int(previous_prime(Integer(args.init)))
-        if args.temp:
-            writer, temp_root = _build_temp_iceberg_writer()
-            print(f"Running in temporary mode: {temp_root}")
-        else:
-            writer = IcebergWriter()
         print(f"Starting from prime {args.init} (-i override, writing to iceberg)")
-    else:
-        init_p, writer, temp_root = setup_analysis_mode(args, config)
-        if args.temp:
-            print(f"Running in temporary mode: {temp_root}")
 
     # Create PPManager instance and run
     manager = PPManager(init_p, args.num_primes, args.batch_size, cores,
