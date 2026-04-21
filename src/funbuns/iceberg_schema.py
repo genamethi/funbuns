@@ -543,14 +543,14 @@ def shape_for_write(
 ) -> tuple[pl.DataFrame, pl.DataFrame]:
     """
     Transform a raw partition frame {p, m_k, n_k, q_k} into the (primes, decomp)
-    pair that write_batch expects. Deduplicates on the full row key, filters
-    sentinel rows (q_k == 0) out of decomp, and derives per-prime k counts for
-    the primes table. The raw frame's primes that are entirely obstructed still
-    land in primes with k=0.
+    pair that write_batch expects. Filters sentinel rows (q_k == 0) out of
+    decomp, and derives per-prime k counts for the primes table. The raw
+    frame's primes that are entirely obstructed still land in primes with k=0.
+    core.py worker output is deterministic and duplicate-free within a batch;
+    validate_cross is the integrity backstop.
     """
-    src = raw.unique(subset=["p", "m_k", "n_k", "q_k"])
     decomp = (
-        src.filter(pl.col("q_k") > 0)
+        raw.filter(pl.col("q_k") > 0)
         .with_columns(
             pl.col("p").cast(pl.Int64),
             pl.col("m_k").cast(pl.Int32),
@@ -561,7 +561,7 @@ def shape_for_write(
         .select(["p", "m_k", "n_k", "q_k", "commit_seq"])
     )
     primes = (
-        src.group_by("p")
+        raw.group_by("p")
         .agg((pl.col("q_k") > 0).sum().cast(pl.Int32).alias("k"))
         .with_columns(
             pl.col("p").cast(pl.Int64),
@@ -597,37 +597,59 @@ class IcebergWriter:
             tbl = self.cat.load_table(PRIMES_IDENT)
         except Exception:
             return 0, 0
-        if tbl.current_snapshot() is None:
+        snap = tbl.current_snapshot()
+        if snap is None:
             return 0, 0
+        summary = snap.summary
+        # pyiceberg's Summary is not a dict — use .get() (with None check)
+        # rather than the `in` operator, which iterates Pydantic field tuples.
+        max_p_prop = summary.get("funbuns.max_p") if summary is not None else None
+        max_cs_prop = summary.get("funbuns.max_commit_seq") if summary is not None else None
+        if max_p_prop is not None and max_cs_prop is not None:
+            return int(max_cs_prop) + 1, int(max_p_prop)
+        # Legacy fallback: snapshots written before write_batch started
+        # stamping funbuns.max_* summary properties. Sort manifest entries by
+        # commit_seq desc and take the top file's p upper bound. One extra
+        # commit under the new writer populates the summary and we never
+        # re-enter this branch for that catalog.
         files = pl.from_arrow(tbl.inspect.files().select(["readable_metrics"]))
         if files.height == 0:
             return 0, 0
-        bounds = files.select(
-            pl.col("readable_metrics")
-            .struct.field("commit_seq")
-            .struct.field("upper_bound")
-            .max()
-            .alias("max_seq"),
-            pl.col("readable_metrics")
-            .struct.field("p")
-            .struct.field("upper_bound")
-            .max()
-            .alias("max_p"),
+        top = (
+            files.select(
+                pl.col("readable_metrics")
+                .struct.field("commit_seq")
+                .struct.field("upper_bound")
+                .alias("cs"),
+                pl.col("readable_metrics")
+                .struct.field("p")
+                .struct.field("upper_bound")
+                .alias("p"),
+            )
+            .sort("cs", descending=True)
+            .head(1)
         )
-        max_seq = bounds["max_seq"].item()
-        max_p = bounds["max_p"].item()
-        if max_seq is None or max_p is None:
+        cs = top["cs"].item()
+        mp = top["p"].item()
+        if cs is None or mp is None:
             return 0, 0
-        return int(max_seq) + 1, int(max_p)
+        return int(cs) + 1, int(mp)
 
     def flush(self, raw_df: pl.DataFrame) -> WriteBatchResult:
         commit_seq = self.next_commit_seq
+        # Worker batches come from contiguous Primes().unrank(i), so raw_df["p"]
+        # is monotone non-decreasing; [-1] is the batch max in O(1). Cumulative
+        # max across out-of-order flushes lives on self.resume_p so the stamp
+        # never regresses.
+        batch_max_p = int(raw_df["p"][-1])
+        self.resume_p = max(self.resume_p, batch_max_p)
         primes_df, decomp_df = shape_for_write(raw_df, commit_seq=commit_seq)
         result = write_batch(
             self.cat,
             commit_seq=commit_seq,
             primes_df=primes_df,
             decomp_df=decomp_df,
+            max_p=self.resume_p,
         )
         self.next_commit_seq += 1
         return result
@@ -639,6 +661,7 @@ def write_batch(
     commit_seq: int,
     primes_df: pl.DataFrame,
     decomp_df: pl.DataFrame,
+    max_p: int,
 ) -> WriteBatchResult:
     """
     Validate, sort, chunk, write, and commit a single (primes, decompositions)
@@ -686,10 +709,21 @@ def write_batch(
         snap_to_p_boundary=True,
     )
 
-    primes_tbl.add_files([str(p) for p in primes_files])
+    snap_props = {
+        "funbuns.max_p": str(max_p),
+        "funbuns.max_commit_seq": str(commit_seq),
+    }
+
+    primes_tbl.add_files(
+        [str(p) for p in primes_files],
+        snapshot_properties=snap_props,
+    )
     primes_tbl = cat.load_table(PRIMES_IDENT)
 
-    decomp_tbl.add_files([str(p) for p in decomp_files])
+    decomp_tbl.add_files(
+        [str(p) for p in decomp_files],
+        snapshot_properties=snap_props,
+    )
     decomp_tbl = cat.load_table(DECOMP_IDENT)
 
     pointer_files = [_write_pointer(primes_tbl), _write_pointer(decomp_tbl)]
