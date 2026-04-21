@@ -9,11 +9,7 @@ import os
 
 def _read_version() -> str:
     """ pixi run and pixi shell both add project version to the environment. """
-    try:
-        version = os.getenv("PIXI_PROJECT_VERSION")
-        return version
-    except (FileNotFoundError, KeyError)
-        return "0.0.0"
+    return os.getenv("PIXI_PROJECT_VERSION") or "0.0.0"
 
 
 __version__ = _read_version()
