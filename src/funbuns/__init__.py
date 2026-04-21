@@ -4,21 +4,21 @@ Funbuns: Prime power partition analysis package.
 Studying primes p that can be expressed as p = 2^m + q^n where q is prime.
 """
 
-import tomllib
-from pathlib import Path
+import os
 
 
 def _read_version() -> str:
-    """Read version from pixi.toml (single source of truth)."""
+    """ pixi run and pixi shell both add project version to the environment. """
     try:
-        pixi = Path(__file__).resolve().parents[2] / "pixi.toml"
-        with open(pixi, "rb") as f:
-            return tomllib.load(f)["workspace"]["version"]
-    except (FileNotFoundError, KeyError):
+        version = os.getenv("PIXI_PROJECT_VERSION")
+        return version
+    except (FileNotFoundError, KeyError)
         return "0.0.0"
 
 
 __version__ = _read_version()
+## I suspect this isn't needed in the __init__ and can be moved to the test that actually uses it.
+    ##TODO confirm and move to test file, delete here.
 VERSION = tuple(int(x) for x in __version__.split("."))
 
 from . import _patches  # noqa: F401  — applies pyiceberg sort_order_id fix on import
