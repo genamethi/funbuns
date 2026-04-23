@@ -13,7 +13,6 @@ from .core import PPManager
 from .utils import (setup_logging, get_config, setup_analysis_mode,
                     JournalWriter)
 #from .dataprep import prepare_prime_powers
-from .viewer import generate_dashboard
 import polars as pl
 
 
@@ -170,6 +169,7 @@ def main():
 
     # Handle view mode
     if args.view:
+        from .viewer import generate_dashboard
         generate_dashboard(args.data_file)
         return
 
