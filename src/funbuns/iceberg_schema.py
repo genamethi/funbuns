@@ -28,16 +28,20 @@ Public surface:
     validate_decomp_batch(df, *, commit_seq)
     validate_cross(primes_df, decomp_df)
     build_file_kv(pa_table, *, table_name, commit_seq, ...) -> dict[bytes, bytes]
-    write_batch(cat, *, commit_seq, primes_df, decomp_df, staging_dir=None) -> WriteBatchResult
+    IcebergWriter(cat=None).flush(raw_df) -> WriteBatchResult    # parquet only
+    IcebergWriter.commit_pending()                                # catalog commit
 
 Write path does not go through polars.DataFrame.write_iceberg. PyIceberg 0.11.1
 ignores row-group sizing, does not sort on write, and does not pass through
 parquet key-value metadata. Instead we:
 
-    sort → chunk at p-boundaries → pa.Table with custom KV → pq.write_table →
-    tbl.add_files(...) → catalog commit → pointer file
+    sort → chunk at p-boundaries → pa.Table with custom KV → pq.write_table
+    (hot path ends here; files are durable on disk)
+    ... later: tbl.add_files(all_pending, snapshot_properties=...)
 
-All of those are stable, fully-configurable APIs.
+``add_files`` is deferred to ``commit_pending`` so ingest runs don't pay
+per-batch catalog I/O. One snapshot per run replaces N per-batch
+snapshots.
 
 Schema evolution:
 
@@ -59,11 +63,10 @@ Schema evolution:
 
 from __future__ import annotations
 
-import hashlib
 import json
 import os
 import subprocess
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -290,14 +293,6 @@ def _git_sha() -> str:
     return sha
 
 
-def _content_sha256(pa_table: pa.Table) -> str:
-    h = hashlib.sha256()
-    for col in pa_table.column_names:
-        for chunk in pa_table.column(col).chunks:
-            h.update(chunk.buffers()[-1] or b"")
-    return h.hexdigest()
-
-
 def build_file_kv(
     pa_table: pa.Table,
     *,
@@ -308,9 +303,9 @@ def build_file_kv(
     """
     Build per-file parquet footer KV metadata for a prepared pa.Table.
 
-    The table must already be in canonical sort order — content_sha256 is
-    computed over the in-memory buffers and is reproducible only for identical
-    row ordering.
+    Row-count and per-column min/max are already stored by parquet itself
+    (pyiceberg reads them from the footer on add_files); these KV pairs
+    carry only the provenance iceberg stats don't cover.
     """
     if table_name not in ("primes", "decompositions"):
         raise ValueError(f"unknown table_name: {table_name}")
@@ -318,12 +313,6 @@ def build_file_kv(
     p_col = pa_table.column("p")
     p_min = int(pa.compute.min(p_col).as_py())
     p_max = int(pa.compute.max(p_col).as_py())
-    n_rows = pa_table.num_rows
-    n_primes = (
-        n_rows
-        if table_name == "primes"
-        else int(pa.compute.count_distinct(p_col).as_py())
-    )
 
     kv: dict[str, str] = {
         "funbuns.schema_version": str(SCHEMA_VERSION),
@@ -333,9 +322,7 @@ def build_file_kv(
         "funbuns.commit_seq": str(commit_seq),
         "funbuns.p_min": str(p_min),
         "funbuns.p_max": str(p_max),
-        "funbuns.n_rows": str(n_rows),
-        "funbuns.n_primes": str(n_primes),
-        "funbuns.content_sha256": _content_sha256(pa_table),
+        "funbuns.n_rows": str(pa_table.num_rows),
         "funbuns.generated_at": datetime.now(timezone.utc).isoformat(),
         "funbuns.generator": generator,
     }
@@ -447,9 +434,6 @@ class WriteBatchResult:
     decomp_files: list[Path]
     primes_rows: int
     decomp_rows: int
-    primes_snapshot_id: int | None
-    decomp_snapshot_id: int | None
-    pointer_files: list[Path] = field(default_factory=list)
 
 
 def _to_iceberg_arrow(df: pl.DataFrame, schema: Schema) -> pa.Table:
@@ -527,15 +511,6 @@ def _write_chunks(
     return final_paths
 
 
-def _write_pointer(tbl: Table) -> Path:
-    location = tbl.location().replace("file://", "")
-    meta_dir = Path(location) / "metadata"
-    latest = sorted(meta_dir.glob("*.metadata.json"))[-1]
-    pointer = meta_dir / "current.metadata.json.txt"
-    pointer.write_text(latest.name + "\n")
-    return pointer
-
-
 def shape_for_write(
     raw: pl.DataFrame,
     *,
@@ -575,22 +550,45 @@ def shape_for_write(
 class IcebergWriter:
     """
     Live-path writer: owns a catalog handle and a monotonic commit_seq counter,
-    initialized from existing iceberg manifest state. Each flush() call shapes
-    a raw partition frame, commits a new batch, and advances the counter.
+    initialized from existing iceberg manifest state.
 
-    Intended to be constructed once per process and passed as a bound-method
-    callback (writer.flush) into PPConsumer.
+    ``flush(raw_df)`` is the hot-path call — it shapes, validates, and
+    writes parquet files into the canonical partition dir, but does NOT
+    touch the catalog. Pending file paths accumulate on the writer.
+
+    ``commit_pending()`` registers every pending file with one
+    ``add_files`` call per table. Callers run it once after ingest
+    completes (and once more after each crash-bounded checkpoint if
+    desired).
+
+    Deferring catalog commits:
+      - eliminates 13% of hot-path wall (content hashing, count_distinct)
+      - eliminates repeated cat.load_table + OCC + manifest-list rewrite
+      - collapses N per-batch snapshots into one snapshot per run,
+        which keeps manifest-list growth linear in runs, not batches.
+
+    Crash semantics: on mid-run crash, parquet files are sitting on disk
+    as orphans under ``data/commit_seq=K/``. Startup is unaffected (they
+    aren't referenced by any manifest); a reconcile script can either
+    clean them or register them after the fact.
 
     Attributes:
         cat: active Catalog handle.
         next_commit_seq: next commit_seq to be assigned on flush().
-        resume_p: max prime already committed, or 0 if the tables are empty.
+        resume_p: max prime already committed or pending, 0 if empty.
     """
 
     def __init__(self, cat: Catalog | None = None):
         self.cat = cat if cat is not None else open_catalog()
         ensure_tables(self.cat)
         self.next_commit_seq, self.resume_p = self._init_state()
+        # Table handles and partition roots are stable for the writer's
+        # lifetime; resolve once.
+        self._primes_tbl = self.cat.load_table(PRIMES_IDENT)
+        self._decomp_tbl = self.cat.load_table(DECOMP_IDENT)
+        self.pending_primes: list[Path] = []
+        self.pending_decomp: list[Path] = []
+        self._pending_max_commit_seq: int = self.next_commit_seq - 1
 
     def _init_state(self) -> tuple[int, int]:
         try:
@@ -636,105 +634,91 @@ class IcebergWriter:
         return int(cs) + 1, int(mp)
 
     def flush(self, raw_df: pl.DataFrame) -> WriteBatchResult:
+        """
+        Hot path: shape, validate, write parquet. No catalog I/O.
+
+        Worker batches come from contiguous Primes().unrank(i), so raw_df["p"]
+        is monotone non-decreasing; [-1] is the batch max in O(1). Cumulative
+        max across out-of-order flushes lives on self.resume_p so the stamp
+        never regresses.
+        """
         commit_seq = self.next_commit_seq
-        # Worker batches come from contiguous Primes().unrank(i), so raw_df["p"]
-        # is monotone non-decreasing; [-1] is the batch max in O(1). Cumulative
-        # max across out-of-order flushes lives on self.resume_p so the stamp
-        # never regresses.
         batch_max_p = int(raw_df["p"][-1])
         self.resume_p = max(self.resume_p, batch_max_p)
+
         primes_df, decomp_df = shape_for_write(raw_df, commit_seq=commit_seq)
-        result = write_batch(
-            self.cat,
+        # primes goes through group_by (no order guarantee); decomp comes
+        # out of filter on already-ascending raw, so it's already sorted
+        # by (p, m_k).
+        primes_df = primes_df.sort("p")
+        validate_primes_batch(primes_df, commit_seq=commit_seq)
+        validate_decomp_batch(decomp_df, commit_seq=commit_seq)
+        validate_cross(primes_df, decomp_df)
+
+        primes_at = _to_iceberg_arrow(primes_df, PRIMES_SCHEMA)
+        decomp_at = _to_iceberg_arrow(decomp_df, DECOMP_SCHEMA)
+
+        primes_target = TARGET_FILE_SIZE_BYTES // BYTES_PER_ROW_PRIMES
+        decomp_target = TARGET_FILE_SIZE_BYTES // BYTES_PER_ROW_DECOMP
+
+        primes_files = _write_chunks(
+            primes_at,
+            table_name="primes",
             commit_seq=commit_seq,
-            primes_df=primes_df,
-            decomp_df=decomp_df,
-            max_p=self.resume_p,
+            partition_dir=_partition_dir(self._primes_tbl, commit_seq),
+            target_rows=primes_target,
+            snap_to_p_boundary=False,
         )
+        decomp_files = _write_chunks(
+            decomp_at,
+            table_name="decompositions",
+            commit_seq=commit_seq,
+            partition_dir=_partition_dir(self._decomp_tbl, commit_seq),
+            target_rows=decomp_target,
+            snap_to_p_boundary=True,
+        )
+
+        self.pending_primes.extend(primes_files)
+        self.pending_decomp.extend(decomp_files)
+        self._pending_max_commit_seq = commit_seq
         self.next_commit_seq += 1
-        return result
 
+        return WriteBatchResult(
+            commit_seq=commit_seq,
+            primes_files=primes_files,
+            decomp_files=decomp_files,
+            primes_rows=primes_df.height,
+            decomp_rows=decomp_df.height,
+        )
 
-def write_batch(
-    cat: Catalog,
-    *,
-    commit_seq: int,
-    primes_df: pl.DataFrame,
-    decomp_df: pl.DataFrame,
-    max_p: int,
-) -> WriteBatchResult:
-    """
-    Validate, sort, chunk, write, and commit a single (primes, decompositions)
-    batch directly into the canonical warehouse partition paths.
+    def commit_pending(self) -> None:
+        """
+        End-of-run (or checkpoint): register every pending parquet file
+        with one ``add_files`` call per table. Snapshot summary carries
+        ``funbuns.max_p`` / ``funbuns.max_commit_seq`` so the next writer
+        reads resume state in O(1).
 
-    primes_df and decomp_df must have the exact dtypes the validators expect
-    (see validate_primes_batch / validate_decomp_batch). write_batch sorts
-    them but does not reshape or filter.
-
-    Files are written as `.<name>.parquet.tmp` in the canonical partition dir,
-    then atomically renamed into place before add_files is called. If any
-    chunk write fails, tmp files for that table are cleaned up. Orphaned
-    post-rename files from a failure between rename and commit can be
-    identified later by comparing warehouse contents to manifest entries.
-    """
-    primes_df = primes_df.sort("p")
-    decomp_df = decomp_df.sort(["p", "m_k"])
-    validate_primes_batch(primes_df, commit_seq=commit_seq)
-    validate_decomp_batch(decomp_df, commit_seq=commit_seq)
-    validate_cross(primes_df, decomp_df)
-
-    primes_tbl = cat.load_table(PRIMES_IDENT)
-    decomp_tbl = cat.load_table(DECOMP_IDENT)
-
-    primes_at = _to_iceberg_arrow(primes_df, PRIMES_SCHEMA)
-    decomp_at = _to_iceberg_arrow(decomp_df, DECOMP_SCHEMA)
-
-    primes_target = TARGET_FILE_SIZE_BYTES // BYTES_PER_ROW_PRIMES
-    decomp_target = TARGET_FILE_SIZE_BYTES // BYTES_PER_ROW_DECOMP
-
-    primes_files = _write_chunks(
-        primes_at,
-        table_name="primes",
-        commit_seq=commit_seq,
-        partition_dir=_partition_dir(primes_tbl, commit_seq),
-        target_rows=primes_target,
-        snap_to_p_boundary=False,
-    )
-    decomp_files = _write_chunks(
-        decomp_at,
-        table_name="decompositions",
-        commit_seq=commit_seq,
-        partition_dir=_partition_dir(decomp_tbl, commit_seq),
-        target_rows=decomp_target,
-        snap_to_p_boundary=True,
-    )
-
-    snap_props = {
-        "funbuns.max_p": str(max_p),
-        "funbuns.max_commit_seq": str(commit_seq),
-    }
-
-    primes_tbl.add_files(
-        [str(p) for p in primes_files],
-        snapshot_properties=snap_props,
-    )
-    primes_tbl = cat.load_table(PRIMES_IDENT)
-
-    decomp_tbl.add_files(
-        [str(p) for p in decomp_files],
-        snapshot_properties=snap_props,
-    )
-    decomp_tbl = cat.load_table(DECOMP_IDENT)
-
-    pointer_files = [_write_pointer(primes_tbl), _write_pointer(decomp_tbl)]
-
-    return WriteBatchResult(
-        commit_seq=commit_seq,
-        primes_files=primes_files,
-        decomp_files=decomp_files,
-        primes_rows=primes_df.height,
-        decomp_rows=decomp_df.height,
-        primes_snapshot_id=primes_tbl.current_snapshot().snapshot_id if primes_tbl.current_snapshot() else None,
-        decomp_snapshot_id=decomp_tbl.current_snapshot().snapshot_id if decomp_tbl.current_snapshot() else None,
-        pointer_files=pointer_files,
-    )
+        Idempotent: no-op if there's nothing pending.
+        """
+        if not self.pending_primes:
+            return
+        snap_props = {
+            "funbuns.max_p": str(self.resume_p),
+            "funbuns.max_commit_seq": str(self._pending_max_commit_seq),
+        }
+        primes_tbl = self.cat.load_table(PRIMES_IDENT)
+        primes_tbl.add_files(
+            [str(p) for p in self.pending_primes],
+            snapshot_properties=snap_props,
+        )
+        decomp_tbl = self.cat.load_table(DECOMP_IDENT)
+        decomp_tbl.add_files(
+            [str(p) for p in self.pending_decomp],
+            snapshot_properties=snap_props,
+        )
+        self.pending_primes.clear()
+        self.pending_decomp.clear()
+        # Refresh cached handles so subsequent partition_dir() calls see
+        # the new snapshot.
+        self._primes_tbl = self.cat.load_table(PRIMES_IDENT)
+        self._decomp_tbl = self.cat.load_table(DECOMP_IDENT)

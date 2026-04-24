@@ -45,7 +45,6 @@ def main():
         num_primes=NUM_PRIMES,
         batch_size=BATCH_SIZE,
         cores=cores,
-        buffer_size=BATCH_SIZE * 2,
         append_data=bench_append,
         verbose=True,
     )

@@ -10,9 +10,9 @@ against a fresh throwaway iceberg catalog and asserts:
       ``(next_commit_seq, resume_p)`` — i.e. resume is driven by max(p),
       not by max(commit_seq), so the reorder does not break resume.
 
-If a future change adds a reorder buffer to PPConsumer to force batches to
-commit in p-order, assertion (b) becomes impossible and this test fails,
-flagging the behavioral change explicitly.
+If a future change adds a reorder buffer to the ingest path to force
+batches to commit in p-order, assertion (b) becomes impossible and this
+test fails, flagging the behavioral change explicitly.
 """
 
 from __future__ import annotations
@@ -56,6 +56,9 @@ def test_commit_seq_reorder_is_safe(tmp_path):
 
     assert r0.commit_seq == 0
     assert r1.commit_seq == 1
+
+    # flush() is parquet-only; catalog sees nothing until commit_pending.
+    writer.commit_pending()
 
     primes = cat.load_table(isch.PRIMES_IDENT).scan().to_polars()
     by_seq = (

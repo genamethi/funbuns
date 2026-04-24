@@ -268,17 +268,13 @@ def main():
     setup_logging()
 
     config = get_config()
-    # Flush buffer is independent of batch size — config-driven
-    # Production: pixi.toml sets buffer_size = 500000
-    # Fallback: 10000 (ensures flushes even in small test runs)
-    buffer_size = config.get('buffer_size', 10_000)
 
     # Journal for generation runs
     journal = JournalWriter(name="funbuns")
     t0 = time.monotonic()
     journal.log("main", "run_start",
                 num_primes=args.num_primes, batch_size=args.batch_size,
-                cores=cores, buffer_size=buffer_size)
+                cores=cores)
 
     init_p, writer, temp_root = setup_analysis_mode(args, config)
     if temp_root is not None:
@@ -288,9 +284,18 @@ def main():
 
     # Create PPManager instance and run
     manager = PPManager(init_p, args.num_primes, args.batch_size, cores,
-                        buffer_size=buffer_size, append_data=writer.flush,
+                        append_data=writer.flush,
                         verbose=args.verbose)
     gen_status = manager.run_gen() or {}
+
+    # Register every parquet file flushed during the run in a single
+    # catalog commit. Runs even if interrupted — parquet on disk is
+    # durable and worth registering.
+    try:
+        writer.commit_pending()
+    except Exception as exc:
+        journal.log("main", "commit_pending_failed", error=repr(exc))
+        raise
 
     elapsed = round(time.monotonic() - t0, 2)
 

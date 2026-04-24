@@ -1,4 +1,4 @@
-"""Tests for core.py: PPBatchProcessor, worker_batch, PPConsumer, PPBatchFeeder."""
+"""Tests for core.py: PPBatchProcessor, worker_batch, PPBatchFeeder."""
 
 import json
 import os
@@ -120,72 +120,6 @@ class TestWorkerBatchDispatch:
         # Every prime in the range should appear in output
         for ep in expected_primes:
             assert ep in result_primes, f"Prime {ep} missing from worker_batch output"
-
-
-class TestPPConsumerFlush:
-    """T4: PPConsumer flush behavior — fires at threshold, finalize drains."""
-
-    def test_flush_at_threshold(self, mocker):
-        from funbuns.core import PPConsumer
-
-        mock_save = mocker.Mock()
-        consumer = PPConsumer(buffer_size=100, save_callback=mock_save)
-
-        # Add 50 rows — should NOT trigger flush
-        df_small = pl.DataFrame(
-            {"p": list(range(50)), "m_k": [1] * 50, "n_k": [1] * 50, "q_k": [3] * 50},
-            schema=PARTITION_SCHEMA,
-        )
-        consumer.add_results(df_small)
-        assert mock_save.call_count == 0
-
-        # Add 60 more — pushes past buffer_size=100, should flush
-        df_trigger = pl.DataFrame(
-            {"p": list(range(50, 110)), "m_k": [1] * 60, "n_k": [1] * 60, "q_k": [3] * 60},
-            schema=PARTITION_SCHEMA,
-        )
-        consumer.add_results(df_trigger)
-        assert mock_save.call_count >= 1
-
-    def test_finalize_drains(self, mocker):
-        from funbuns.core import PPConsumer
-
-        mock_save = mocker.Mock()
-        consumer = PPConsumer(buffer_size=10000, save_callback=mock_save)
-
-        df = pl.DataFrame(
-            {"p": [7, 11], "m_k": [1, 1], "n_k": [1, 1], "q_k": [5, 9]},
-            schema=PARTITION_SCHEMA,
-        )
-        consumer.add_results(df)
-        assert mock_save.call_count == 0  # Below threshold
-
-        consumer.finalize()
-        assert mock_save.call_count == 1  # Drained
-
-    def test_empty_finalize(self, mocker):
-        from funbuns.core import PPConsumer
-
-        mock_save = mocker.Mock()
-        consumer = PPConsumer(buffer_size=100, save_callback=mock_save)
-        consumer.finalize()
-        assert mock_save.call_count == 0  # Nothing to flush
-
-    def test_none_input_ignored(self, mocker):
-        from funbuns.core import PPConsumer
-
-        mock_save = mocker.Mock()
-        consumer = PPConsumer(buffer_size=100, save_callback=mock_save)
-        consumer.add_results(None)
-        assert consumer.result_count == 0
-
-    def test_empty_df_ignored(self, mocker):
-        from funbuns.core import PPConsumer
-
-        mock_save = mocker.Mock()
-        consumer = PPConsumer(buffer_size=100, save_callback=mock_save)
-        consumer.add_results(pl.DataFrame(schema=PARTITION_SCHEMA))
-        assert consumer.result_count == 0
 
 
 @pytest.mark.sage

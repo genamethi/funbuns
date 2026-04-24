@@ -10,18 +10,33 @@ Workers receive (start_idx, count) as 0-indexed prime indices. Each worker
 resolves its range via P.unrank and generates primes locally. The feeder
 does no prime generation — just one prime_pi call then arithmetic.
 
+Concurrency:
+  - `pool.imap_unordered` provides the sliding window of at-most-``cores``
+    tasks in flight; no manual drain loop.
+  - A background writer thread pulls DataFrames off a bounded
+    ``queue.Queue`` and calls ``append_data`` (typically
+    ``IcebergWriter.flush``). Backpressure falls out of the queue's
+    maxsize — if writes lag, the main thread blocks on ``put``.
+  - Catalog commits are deferred: ``append_data`` writes parquet only;
+    the caller runs ``IcebergWriter.commit_pending`` once after
+    ``run_gen`` returns.
+
 Interrupt handling:
   - Workers ignore SIGINT so they finish cleanly.
-  - First Ctrl-C: stop dispatching, drain in-flight workers, flush, exit.
-  - Second Ctrl-C: abandon in-flight, flush collected results, exit.
-  Both paths emit a shutdown event and print a resume command.
+  - First Ctrl-C: stop dispatching new batches; the input generator
+    returns, imap_unordered drains in-flight results, writer thread
+    drains the queue.
+  - Second Ctrl-C: break out of the result loop; pool.terminate();
+    writer thread still drains whatever is already queued.
 """
 
 from sage.all import prime_range, Primes, prime_pi
 import multiprocessing as mp
 import polars as pl
 import numpy as np
+import queue
 import signal
+import threading
 import time as _time
 from .utils import PARTITION_SCHEMA, PARTITION_DISTRIBUTION  # noqa: F401
 
@@ -52,21 +67,6 @@ def _sigint_handler(signum, frame):
 def _worker_ignore_sigint():
     """Pool initializer: make workers immune to SIGINT."""
     signal.signal(signal.SIGINT, signal.SIG_IGN)
-
-
-# TODO: Covering system pre-screening (research in progress)
-#
-# The Erdős-type covering system structure (see project_covering_systems.md)
-# implies that for many m values, q_cand = p - 2^m is divisible by small
-# primes determined by (p mod M, m mod ord(2, ℓ)) for a modulus M.
-# The {3, 5, 7} backbone alone covers all of Z/12Z, and the mod-255255
-# classifier identifies 22 unconditional obstruction classes.
-#
-# This structure could allow skipping is_prime_power() calls for m values
-# where the covering system already determines the outcome. The exact
-# mechanism (CRT-based residue lookup, precomputed bitmasks, or direct
-# modular arithmetic) is TBD pending further mathematical analysis.
-# See: sage.arith.misc (CRT, multiplicative_order, etc.)
 
 
 class PPBatchProcessor:
@@ -148,6 +148,10 @@ def worker_batch(start_idx: int, count: int) -> np.ndarray | None:
     return None
 
 
+def _worker_star(args):
+    return worker_batch(*args)
+
+
 class PPBatchFeeder:
     """Compute batch boundaries as index slices — no prime generation."""
 
@@ -172,51 +176,12 @@ class PPBatchFeeder:
             yield (self.start_idx + i * self.batch_size, self.batch_size)
 
 
-class PPConsumer:
-    """Collects DataFrames and flushes to disk incrementally.
-
-    Each buffered DataFrame is written as its own parquet file on flush,
-    avoiding a concat that would temporarily double memory usage.
-    """
-
-    def __init__(self, buffer_size: int, save_callback, memory_pct_limit: float = 0.50):
-        self.buffer_size = buffer_size
-        self.save_callback = save_callback
-        self.memory_pct_limit = memory_pct_limit
-        self.df_buffer: list[pl.DataFrame] = []
-        self.result_count = 0
-        self._last_pressure_check = 0.0
-
-    def _memory_pressure(self) -> bool:
-        now = _time.monotonic()
-        if now - self._last_pressure_check < 1.0:
-            return False
-        self._last_pressure_check = now
-        try:
-            import psutil
-            return psutil.virtual_memory().percent / 100.0 > self.memory_pct_limit
-        except Exception:
-            return False
-
-    def add_results(self, results_df: pl.DataFrame):
-        if results_df is not None and results_df.height > 0:
-            self.df_buffer.append(results_df)
-            self.result_count += results_df.height
-
-            if self.result_count >= self.buffer_size or self._memory_pressure():
-                self._flush_results()
-
-    def _flush_results(self):
-        """Write each buffered DataFrame individually (no concat)."""
-        if not self.df_buffer:
+def _writer_loop(q: "queue.Queue", save_callback) -> None:
+    while True:
+        df = q.get()
+        if df is None:
             return
-        for df in self.df_buffer:
-            self.save_callback(df)
-        self.df_buffer = []
-        self.result_count = 0
-
-    def finalize(self):
-        self._flush_results()
+        save_callback(df)
 
 
 class PPManager:
@@ -226,12 +191,11 @@ class PPManager:
     and ``primes_not_processed`` so the caller can print a resume command.
     """
 
-    def __init__(self, init_p, num_primes, batch_size, cores, buffer_size, append_data, verbose=False):
+    def __init__(self, init_p, num_primes, batch_size, cores, append_data, verbose=False):
         self.init_p = init_p or 2
         self.num_primes = num_primes
         self.batch_size = batch_size
         self.cores = cores
-        self.buffer_size = buffer_size
         self.append_data = append_data
         self.verbose = verbose
         self.batches_processed = 0
@@ -242,16 +206,13 @@ class PPManager:
         from tqdm import tqdm
 
         feeder = PPBatchFeeder(self.init_p, self.num_primes, self.batch_size, self.verbose)
-        consumer = PPConsumer(self.buffer_size, self.append_data)
 
         print(f"Processing {self.num_primes} primes starting from {self.init_p}")
-        print(f"Batch size: {self.batch_size}, workers: {self.cores}, "
-              f"flush buffer: {self.buffer_size}")
+        print(f"Batch size: {self.batch_size}, workers: {self.cores}")
 
         batches = list(feeder.generate_batches())
         total_batches = len(batches)
 
-        # Install signal handler; workers will ignore SIGINT via initializer
         _interrupt_count = 0
         old_handler = signal.signal(signal.SIGINT, _sigint_handler)
 
@@ -259,82 +220,62 @@ class PPManager:
         interrupted = False
         abandoned = False
 
+        writer_q: "queue.Queue" = queue.Queue(maxsize=2 * self.cores)
+        writer_thread = threading.Thread(
+            target=_writer_loop,
+            args=(writer_q, self.append_data),
+            daemon=True,
+        )
+        writer_thread.start()
+
+        cols = list(PARTITION_SCHEMA.keys())
+        pbar = tqdm(total=self.num_primes, desc="Prime partition",
+                    unit="prime", smoothing=0)
+        _rate_window_start = _time.monotonic()
+        _rate_window_primes = 0
+
+        def _batch_iter():
+            # Stop dispatching after first Ctrl-C; in-flight results still
+            # drain through imap_unordered.
+            for b in batches:
+                if _interrupt_count >= 1:
+                    return
+                yield b
+
         try:
             self.batches_processed = 0
             self.primes_processed = 0
 
-            # Sliding window: keep at most self.cores tasks in-flight
-            pending = []  # list of AsyncResult
-            next_idx = 0
-
-            # Seed the pipeline
-            seed_count = min(self.cores, total_batches)
-            for i in range(seed_count):
-                pending.append(pool.apply_async(worker_batch, batches[i]))
-            next_idx = seed_count
-
-            cols = list(PARTITION_SCHEMA.keys())
-            pbar = tqdm(total=self.num_primes, desc="Prime partition",
-                        unit="prime", smoothing=0)
-
-            # Rolling 60s throughput window (complements tqdm's cumulative avg)
-            _rate_window_start = _time.monotonic()
-            _rate_window_primes = 0
-
-            while pending:
+            for arr in pool.imap_unordered(_worker_star, _batch_iter()):
                 if _interrupt_count >= 2:
                     abandoned = True
                     interrupted = True
                     break
 
-                # Drain ALL ready results in one pass
-                ready_indices = [i for i in range(len(pending)) if pending[i].ready()]
-
-                if not ready_indices:
-                    _time.sleep(0.05)  # 20 Hz poll — no busy-wait
-                    continue
-
-                # Pop from end first to keep indices stable
-                ready_results = [pending.pop(i) for i in reversed(ready_indices)]
-
-                for ar in ready_results:
-                    result_array = ar.get()
-
-                    if result_array is not None:
-                        results_df = pl.DataFrame(
-                            {cols[i]: result_array[:, i] for i in range(4)},
-                            schema=PARTITION_SCHEMA,
-                        )
-                        consumer.add_results(results_df)
-                        n_results = result_array.shape[0]
-                    else:
-                        n_results = 0
-
-                    self.primes_processed += self.batch_size
-                    self.batches_processed += 1
-                    _rate_window_primes += self.batch_size
-                    pbar.update(self.batch_size)
-
-                    now = _time.monotonic()
-                    window_elapsed = now - _rate_window_start
-                    if window_elapsed >= 60.0:
-                        _rate_window_start = now
-                        _rate_window_primes = 0
-                        window_elapsed = 0.001
-                    pbar.set_postfix_str(
-                        f"{self.batches_processed}/{total_batches} batches | "
-                        f"{_rate_window_primes / max(window_elapsed, 0.001):.0f} prime/s (60s)"
+                if arr is not None and arr.size > 0:
+                    df = pl.DataFrame(
+                        {cols[i]: arr[:, i] for i in range(4)},
+                        schema=PARTITION_SCHEMA,
                     )
+                    writer_q.put(df)
 
-                # Refill the pipeline with as many new tasks as we just drained
-                if _interrupt_count == 0:
-                    for _ in range(len(ready_results)):
-                        if next_idx < total_batches:
-                            pending.append(
-                                pool.apply_async(worker_batch, batches[next_idx])
-                            )
-                            next_idx += 1
-                elif not interrupted:
+                self.primes_processed += self.batch_size
+                self.batches_processed += 1
+                _rate_window_primes += self.batch_size
+                pbar.update(self.batch_size)
+
+                now = _time.monotonic()
+                window_elapsed = now - _rate_window_start
+                if window_elapsed >= 60.0:
+                    _rate_window_start = now
+                    _rate_window_primes = 0
+                    window_elapsed = 0.001
+                pbar.set_postfix_str(
+                    f"{self.batches_processed}/{total_batches} batches | "
+                    f"{_rate_window_primes / max(window_elapsed, 0.001):.0f} prime/s (60s)"
+                )
+
+                if _interrupt_count >= 1:
                     interrupted = True
 
             pbar.close()
@@ -346,11 +287,12 @@ class PPManager:
                 pool.close()
             pool.join()
 
-            # Restore original handler before any further work
-            signal.signal(signal.SIGINT, old_handler)
+            # Drain the writer thread regardless of abandon — parquet that
+            # already landed on disk is durable and worth committing.
+            writer_q.put(None)
+            writer_thread.join()
 
-            # Flush whatever we collected
-            consumer.finalize()
+            signal.signal(signal.SIGINT, old_handler)
 
         remaining = self.num_primes - self.primes_processed
 

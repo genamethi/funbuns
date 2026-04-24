@@ -18,8 +18,8 @@ __version__ = _read_version()
 VERSION = tuple(int(x) for x in __version__.split("."))
 
 from . import _patches  # noqa: F401  — applies pyiceberg sort_order_id fix on import
-from .core import PPBatchProcessor, worker_batch, PPBatchFeeder, PPConsumer
+from .core import PPBatchProcessor, worker_batch, PPBatchFeeder
 from .core import PPManager
 from .utils import setup_logging, resume_p, get_config
 
-__all__ = ['PPBatchProcessor', 'PPBatchFeeder', 'PPConsumer', 'PPManager', 'setup_logging', 'resume_p', 'get_config']
+__all__ = ['PPBatchProcessor', 'PPBatchFeeder', 'PPManager', 'setup_logging', 'resume_p', 'get_config']
