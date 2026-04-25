@@ -45,7 +45,7 @@ try:
 except RuntimeError:
     pass  # already set (e.g. by test runner or prior import)
 
-
+P = Primes()
 # ---------------------------------------------------------------------------
 # Signal handling helpers (module-level for pickling)
 # ---------------------------------------------------------------------------
@@ -95,7 +95,7 @@ class PPBatchProcessor:
                 self.results_array[self.current_row] = [p, m_i, pexp, pbase]
                 self.current_row += 1
                 found_partition = True
-                pb = int(pbase)
+                pb = pbase
                 q_hits[pb] = q_hits.get(pb, 0) + 1
                 if q_hits[pb] >= 2:
                     exhausted.append(pb)
@@ -135,10 +135,9 @@ def worker_batch(start_idx: int, count: int) -> np.ndarray | None:
     serialization overhead on the pickle boundary. The caller constructs
     the DataFrame on the main side.
     """
-    P = Primes()
     first_prime = P.unrank(start_idx)
     end_prime = P.unrank(start_idx + count)  # exclusive bound
-    primes = prime_range(int(first_prime), int(end_prime))
+    primes = prime_range(first_prime, end_prime)
 
     processor = PPBatchProcessor()
     result_array = processor.process_batch(primes)
@@ -165,7 +164,7 @@ class PPBatchFeeder:
         # unrank yields next_prime(p), which is correct for resume (where
         # init_p is the last *processed* prime).  For explicit -i starts,
         # the caller must pass the prime *before* the desired start.
-        self.start_idx = int(prime_pi(init_p))
+        self.start_idx = prime_pi(init_p)
 
         if verbose:
             print(f"Start index: {self.start_idx} (prime_pi({init_p}))")
@@ -210,8 +209,8 @@ class PPManager:
         print(f"Processing {self.num_primes} primes starting from {self.init_p}")
         print(f"Batch size: {self.batch_size}, workers: {self.cores}")
 
-        batches = list(feeder.generate_batches())
-        total_batches = len(batches)
+        batches = feeder.generate_batches
+        total_batches = self.num_primes // self.batch_size 
 
         _interrupt_count = 0
         old_handler = signal.signal(signal.SIGINT, _sigint_handler)
@@ -237,7 +236,7 @@ class PPManager:
         def _batch_iter():
             # Stop dispatching after first Ctrl-C; in-flight results still
             # drain through imap_unordered.
-            for b in batches:
+            for b in batches():
                 if _interrupt_count >= 1:
                     return
                 yield b
@@ -279,7 +278,7 @@ class PPManager:
                     interrupted = True
 
             pbar.close()
-
+    
         finally:
             if abandoned:
                 pool.terminate()

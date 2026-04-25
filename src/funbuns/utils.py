@@ -182,7 +182,7 @@ def setup_analysis_mode(args, config):
 
     if args.init is not None:
         from sage.all import Integer, previous_prime
-        init_p = int(previous_prime(Integer(args.init)))
+        init_p = previous_prime(Integer(args.init))
         if writer is None:
             from .iceberg_schema import IcebergWriter
             writer = IcebergWriter()

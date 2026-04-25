@@ -68,14 +68,6 @@ def total_rows(cat: Catalog | None, table: str) -> int:
     """
     Ground-truth row count, computed from manifest per-file record counts.
 
-    Not read from ``snapshot.summary["total-records"]`` because that field
-    is a cumulative counter maintained by pyiceberg and has been observed
-    to drift from the manifest file totals (2026-04-15: decompositions
-    summary was 1,425 short of manifest sum / parquet footer n_rows sum,
-    while the writer invariant ``sum(primes.k) == rows(decompositions)``
-    still held at the file level). Manifest ``record_count`` is the
-    iceberg-native per-file row count and agrees with the parquet footer
-    and the cross-table invariant.
     """
     tbl = _resolve_cat(cat).load_table(_IDENT[table])
     files = pl.from_arrow(tbl.inspect.files())
