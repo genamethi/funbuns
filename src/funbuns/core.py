@@ -12,11 +12,10 @@ does no prime generation — just one prime_pi call then arithmetic.
 
 Concurrency:
   - `pool.imap_unordered` provides the sliding window of at-most-``cores``
-    tasks in flight; no manual drain loop.
-  - A background writer thread pulls DataFrames off a bounded
-    ``queue.Queue`` and calls ``append_data`` (typically
-    ``IcebergWriter.flush``). Backpressure falls out of the queue's
-    maxsize — if writes lag, the main thread blocks on ``put``.
+    tasks in flight.
+  - Each result is shaped into a polars DataFrame and handed to
+    ``append_data`` (typically ``IcebergWriter.flush``) inline on the
+    main thread.
   - Catalog commits are deferred: ``append_data`` writes parquet only;
     the caller runs ``IcebergWriter.commit_pending`` once after
     ``run_gen`` returns.
@@ -24,19 +23,15 @@ Concurrency:
 Interrupt handling:
   - Workers ignore SIGINT so they finish cleanly.
   - First Ctrl-C: stop dispatching new batches; the input generator
-    returns, imap_unordered drains in-flight results, writer thread
-    drains the queue.
-  - Second Ctrl-C: break out of the result loop; pool.terminate();
-    writer thread still drains whatever is already queued.
+    returns, imap_unordered drains in-flight results.
+  - Second Ctrl-C: break out of the result loop; pool.terminate().
 """
 
 from sage.all import prime_range, Primes, prime_pi
 import multiprocessing as mp
 import polars as pl
 import numpy as np
-import queue
 import signal
-import threading
 import time as _time
 from .utils import PARTITION_SCHEMA, PARTITION_DISTRIBUTION  # noqa: F401
 
@@ -175,14 +170,6 @@ class PPBatchFeeder:
             yield (self.start_idx + i * self.batch_size, self.batch_size)
 
 
-def _writer_loop(q: "queue.Queue", save_callback) -> None:
-    while True:
-        df = q.get()
-        if df is None:
-            return
-        save_callback(df)
-
-
 class PPManager:
     """Coordinates parallel prime power partition computation.
 
@@ -219,19 +206,11 @@ class PPManager:
         interrupted = False
         abandoned = False
 
-        writer_q: "queue.Queue" = queue.Queue(maxsize=2 * self.cores)
-        writer_thread = threading.Thread(
-            target=_writer_loop,
-            args=(writer_q, self.append_data),
-            daemon=True,
-        )
-        writer_thread.start()
-
         cols = list(PARTITION_SCHEMA.keys())
         pbar = tqdm(total=self.num_primes, desc="Prime partition",
                     unit="prime", smoothing=0)
-        _rate_window_start = _time.monotonic()
-        _rate_window_primes = 0
+        rate_window_start = _time.monotonic()
+        rate_window_primes = 0
 
         def _batch_iter():
             # Stop dispatching after first Ctrl-C; in-flight results still
@@ -242,9 +221,6 @@ class PPManager:
                 yield b
 
         try:
-            self.batches_processed = 0
-            self.primes_processed = 0
-
             for arr in pool.imap_unordered(_worker_star, _batch_iter()):
                 if _interrupt_count >= 2:
                     abandoned = True
@@ -256,41 +232,34 @@ class PPManager:
                         {cols[i]: arr[:, i] for i in range(4)},
                         schema=PARTITION_SCHEMA,
                     )
-                    writer_q.put(df)
+                    self.append_data(df)
 
                 self.primes_processed += self.batch_size
                 self.batches_processed += 1
-                _rate_window_primes += self.batch_size
+                rate_window_primes += self.batch_size
                 pbar.update(self.batch_size)
 
                 now = _time.monotonic()
-                window_elapsed = now - _rate_window_start
+                window_elapsed = now - rate_window_start
                 if window_elapsed >= 60.0:
-                    _rate_window_start = now
-                    _rate_window_primes = 0
+                    rate_window_start = now
+                    rate_window_primes = 0
                     window_elapsed = 0.001
                 pbar.set_postfix_str(
                     f"{self.batches_processed}/{total_batches} batches | "
-                    f"{_rate_window_primes / max(window_elapsed, 0.001):.0f} prime/s (60s)"
+                    f"{rate_window_primes / max(window_elapsed, 0.001):.0f} prime/s (60s)"
                 )
 
                 if _interrupt_count >= 1:
                     interrupted = True
 
             pbar.close()
-    
         finally:
             if abandoned:
                 pool.terminate()
             else:
                 pool.close()
             pool.join()
-
-            # Drain the writer thread regardless of abandon — parquet that
-            # already landed on disk is durable and worth committing.
-            writer_q.put(None)
-            writer_thread.join()
-
             signal.signal(signal.SIGINT, old_handler)
 
         remaining = self.num_primes - self.primes_processed
