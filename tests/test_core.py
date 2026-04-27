@@ -35,24 +35,23 @@ class TestTripleIdentity:
                 test_primes.append(Integer(p))
 
         for p in test_primes:
-            result = processor.process_batch([p])
-            assert result.shape[0] >= 1, f"No result for p={p}"
+            result = processor.process_batch([p], expected_count=1)
+            assert result.processed_count == 1, f"No result for p={p}"
+            assert int(result.prime_p[0]) == int(p)
+            assert int(result.prime_k[0]) == result.decomp_count
 
-            for row_idx in range(result.shape[0]):
-                row = result[row_idx]
-                p_val, m_k, n_k, q_k = int(row[0]), int(row[1]), int(row[2]), int(row[3])
+            for row_idx in range(result.decomp_count):
+                p_val = int(result.decomp_p[row_idx])
+                m_k = int(result.decomp_m[row_idx])
+                n_k = int(result.decomp_n[row_idx])
+                q_k = int(result.decomp_q[row_idx])
                 assert p_val == int(p)
-
-                if q_k > 0:
-                    assert 2**m_k + q_k**n_k == p_val, (
-                        f"Identity failed: 2^{m_k} + {q_k}^{n_k} != {p_val}"
-                    )
-                    assert Integer(q_k).is_prime(proof=True), (
-                        f"q_k={q_k} is not prime"
-                    )
-                else:
-                    # Obstructed: m_k=0, n_k=0, q_k=0
-                    assert m_k == 0 and n_k == 0
+                assert 2**m_k + q_k**n_k == p_val, (
+                    f"Identity failed: 2^{m_k} + {q_k}^{n_k} != {p_val}"
+                )
+                assert Integer(q_k).is_prime(proof=True), (
+                    f"q_k={q_k} is not prime"
+                )
 
 
 @pytest.mark.sage
@@ -72,15 +71,13 @@ class TestObstructedPrimes:
         processor = PPBatchProcessor()
 
         for p in self.OBSTRUCTED:
-            result = processor.process_batch([Integer(p)])
-            assert result.shape[0] == 1, (
-                f"Expected 1 row for obstructed p={p}, got {result.shape[0]}"
+            result = processor.process_batch([Integer(p)], expected_count=1)
+            assert result.processed_count == 1, (
+                f"Expected 1 prime row for obstructed p={p}, got {result.processed_count}"
             )
-            row = result[0]
-            assert int(row[0]) == p
-            assert int(row[1]) == 0  # m_k
-            assert int(row[2]) == 0  # n_k
-            assert int(row[3]) == 0  # q_k
+            assert int(result.prime_p[0]) == p
+            assert int(result.prime_k[0]) == 0
+            assert result.decomp_count == 0
 
     def test_paranoid_verification(self):
         """Verify obstructed list: for every m, p - 2^m is NOT a prime power."""
@@ -102,20 +99,20 @@ class TestWorkerBatchDispatch:
     """T3: worker_batch resolves index range to correct primes."""
 
     def test_index_to_prime_mapping(self):
-        from sage.all import Primes, prime_range
+        from sage.all import nth_prime, prime_range
 
         from funbuns.core import worker_batch
 
         start_idx = 10
         count = 20
-        result_array = worker_batch(start_idx, count)
+        result = worker_batch(start_idx, count)
 
-        # worker_batch returns raw numpy array (N, 4) or None
-        assert result_array is not None
-        result_primes = sorted(set(result_array[:, 0].tolist()))
+        # worker_batch returns one prime-table row per processed prime.
+        assert result is not None
+        result_primes = sorted(set(result.prime_p.tolist()))
 
-        P = Primes()
-        expected_primes = list(prime_range(int(P.unrank(start_idx)), int(P.unrank(start_idx + count))))
+        # nth_prime is 1-indexed, matching worker_batch's start_idx semantics.
+        expected_primes = list(prime_range(int(nth_prime(start_idx)), int(nth_prime(start_idx + count))))
 
         # Every prime in the range should appear in output
         for ep in expected_primes:
@@ -151,7 +148,9 @@ class TestPPBatchFeeder:
 
         feeder = PPBatchFeeder(init_p=29, num_primes=20, batch_size=10)
         batches = list(feeder.generate_batches())
-        expected_start = int(prime_pi(29))
+        # nth_prime is 1-indexed, so feeder yields prime_pi(init_p) + 1
+        # as the rank of the first prime to process.
+        expected_start = int(prime_pi(29)) + 1
         assert batches[0][0] == expected_start
 
     def test_indivisible_raises(self):
@@ -159,6 +158,48 @@ class TestPPBatchFeeder:
 
         with pytest.raises(ValueError, match="divisible"):
             PPBatchFeeder(init_p=2, num_primes=100, batch_size=7)
+
+
+@pytest.mark.sage
+class TestPPManagerShapedAppend:
+    """PPManager should hand shaped prime/decomposition frames to append_data."""
+
+    def test_manager_appends_shaped_frames(self):
+        from funbuns.core import PPManager
+
+        frames = []
+
+        def append_data(primes_df, decomp_df):
+            frames.append((primes_df, decomp_df))
+
+        manager = PPManager(
+            init_p=2,
+            num_primes=20,
+            batch_size=10,
+            cores=1,
+            append_data=append_data,
+        )
+        status = manager.run_gen()
+
+        assert status["primes_processed"] == 20
+        assert len(frames) == 2
+        assert sum(primes.height for primes, _ in frames) == 20
+        assert all(
+            primes.schema == {"p": pl.Int64, "k": pl.Int32}
+            for primes, _ in frames
+        )
+        assert all(
+            decomp.schema == {
+                "p": pl.Int64,
+                "m_k": pl.Int32,
+                "n_k": pl.Int32,
+                "q_k": pl.Int64,
+            }
+            for _, decomp in frames
+        )
+        assert sum(int(primes["k"].sum()) for primes, _ in frames) == sum(
+            decomp.height for _, decomp in frames
+        )
 
 
 @pytest.mark.slow

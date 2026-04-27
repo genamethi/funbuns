@@ -86,6 +86,7 @@ from pyiceberg.transforms import IdentityTransform
 from pyiceberg.types import IntegerType, LongType, NestedField
 
 from . import __version__ as _PACKAGE_VERSION  # noqa: F401  # re-exported via build_file_kv
+from . import _patches  # noqa: F401  — applies pyiceberg patches; lifted out of __init__.py so workers don't pay for pyarrow import
 from .utils import get_config
 
 # ---------------------------------------------------------------------------
@@ -382,7 +383,7 @@ def validate_decomp_batch(df: pl.DataFrame, *, commit_seq: int) -> None:
     if df.null_count().sum_horizontal().item() != 0:
         raise ValidationError("decomp contains nulls")
     if df.height == 0:
-        raise ValidationError("decomp batch is empty")
+        return
     if (df["q_k"] <= 0).any():
         raise ValidationError("decomp.q_k <= 0 (sentinel rows must be filtered)")
     if (df["m_k"] < 1).any() or (df["n_k"] < 1).any():
@@ -605,58 +606,49 @@ class IcebergWriter:
         max_cs_prop = summary.get("funbuns.max_commit_seq") if summary is not None else None
         if max_p_prop is not None and max_cs_prop is not None:
             return int(max_cs_prop) + 1, int(max_p_prop)
-        # Legacy fallback: snapshots written before write_batch started
-        # stamping funbuns.max_* summary properties. Sort manifest entries by
-        # commit_seq desc and take the top file's p upper bound. One extra
-        # commit under the new writer populates the summary and we never
-        # re-enter this branch for that catalog.
+        # Fallback for snapshots that lack our summary properties, including
+        # delete/maintenance snapshots. commit_seq and p are independent
+        # manifest facts: gap fills can write lower p ranges with higher
+        # commit_seq, so do not infer max(p) from max(commit_seq).
         files = pl.from_arrow(tbl.inspect.files().select(["readable_metrics"]))
         if files.height == 0:
             return 0, 0
-        top = (
-            files.select(
-                pl.col("readable_metrics")
-                .struct.field("commit_seq")
-                .struct.field("upper_bound")
-                .alias("cs"),
-                pl.col("readable_metrics")
-                .struct.field("p")
-                .struct.field("upper_bound")
-                .alias("p"),
-            )
-            .sort("cs", descending=True)
-            .head(1)
+        bounds = files.select(
+            pl.col("readable_metrics")
+            .struct.field("commit_seq")
+            .struct.field("upper_bound")
+            .alias("cs"),
+            pl.col("readable_metrics")
+            .struct.field("p")
+            .struct.field("upper_bound")
+            .alias("p"),
+        ).select(
+            pl.col("cs").max().alias("max_cs"),
+            pl.col("p").max().alias("max_p"),
         )
-        cs = top["cs"].item()
-        mp = top["p"].item()
+        cs = bounds["max_cs"].item()
+        mp = bounds["max_p"].item()
         if cs is None or mp is None:
             return 0, 0
         return int(cs) + 1, int(mp)
 
-    def flush(self, raw_df: pl.DataFrame) -> WriteBatchResult:
-        """
-        Hot path: shape, validate, write parquet. No catalog I/O.
-
-        Worker batches come from contiguous Primes().unrank(i), so raw_df["p"]
-        is monotone non-decreasing; [-1] is the batch max in O(1). Cumulative
-        max across out-of-order flushes lives on self.resume_p so the stamp
-        never regresses.
-        """
-        commit_seq = self.next_commit_seq
-        batch_max_p = int(raw_df["p"][-1])
+    def _flush_tables(
+        self,
+        primes_df: pl.DataFrame,
+        decomp_df: pl.DataFrame,
+        *,
+        commit_seq: int,
+    ) -> WriteBatchResult:
+        """Validate and write already-shaped primes/decompositions frames."""
+        primes_df = primes_df.sort("p")
+        batch_max_p = int(primes_df["p"][-1])
         self.resume_p = max(self.resume_p, batch_max_p)
 
-        primes_df, decomp_df = shape_for_write(raw_df, commit_seq=commit_seq)
-        # primes goes through group_by (no order guarantee); decomp comes
-        # out of filter on already-ascending raw, so it's already sorted
-        # by (p, m_k).
-        primes_df = primes_df.sort("p")
         validate_primes_batch(primes_df, commit_seq=commit_seq)
         validate_decomp_batch(decomp_df, commit_seq=commit_seq)
         validate_cross(primes_df, decomp_df)
 
         primes_at = _to_iceberg_arrow(primes_df, PRIMES_SCHEMA)
-        decomp_at = _to_iceberg_arrow(decomp_df, DECOMP_SCHEMA)
 
         primes_target = TARGET_FILE_SIZE_BYTES // BYTES_PER_ROW_PRIMES
         decomp_target = TARGET_FILE_SIZE_BYTES // BYTES_PER_ROW_DECOMP
@@ -669,14 +661,18 @@ class IcebergWriter:
             target_rows=primes_target,
             snap_to_p_boundary=False,
         )
-        decomp_files = _write_chunks(
-            decomp_at,
-            table_name="decompositions",
-            commit_seq=commit_seq,
-            partition_dir=_partition_dir(self._decomp_tbl, commit_seq),
-            target_rows=decomp_target,
-            snap_to_p_boundary=True,
-        )
+        if decomp_df.height > 0:
+            decomp_at = _to_iceberg_arrow(decomp_df, DECOMP_SCHEMA)
+            decomp_files = _write_chunks(
+                decomp_at,
+                table_name="decompositions",
+                commit_seq=commit_seq,
+                partition_dir=_partition_dir(self._decomp_tbl, commit_seq),
+                target_rows=decomp_target,
+                snap_to_p_boundary=True,
+            )
+        else:
+            decomp_files = []
 
         self.pending_primes.extend(primes_files)
         self.pending_decomp.extend(decomp_files)
@@ -690,6 +686,48 @@ class IcebergWriter:
             primes_rows=primes_df.height,
             decomp_rows=decomp_df.height,
         )
+
+    def flush(self, raw_df: pl.DataFrame) -> WriteBatchResult:
+        """
+        Hot path compatibility: shape raw sentinel rows, validate, write parquet.
+        No catalog I/O.
+        """
+        commit_seq = self.next_commit_seq
+        primes_df, decomp_df = shape_for_write(raw_df, commit_seq=commit_seq)
+        # primes goes through group_by (no order guarantee); decomp comes
+        # out of filter on already-ascending raw, so it's already sorted
+        # by (p, m_k).
+        return self._flush_tables(primes_df, decomp_df, commit_seq=commit_seq)
+
+    def flush_shaped(
+        self,
+        primes_df: pl.DataFrame,
+        decomp_df: pl.DataFrame,
+    ) -> WriteBatchResult:
+        """
+        Hot path for core.py shaped worker output. The frames arrive without
+        commit_seq; this method stamps, validates, and writes parquet.
+        """
+        commit_seq = self.next_commit_seq
+        primes_df = (
+            primes_df.with_columns(
+                pl.col("p").cast(pl.Int64),
+                pl.col("k").cast(pl.Int32),
+                pl.lit(commit_seq, dtype=pl.Int32).alias("commit_seq"),
+            )
+            .select(["p", "k", "commit_seq"])
+        )
+        decomp_df = (
+            decomp_df.with_columns(
+                pl.col("p").cast(pl.Int64),
+                pl.col("m_k").cast(pl.Int32),
+                pl.col("n_k").cast(pl.Int32),
+                pl.col("q_k").cast(pl.Int64),
+                pl.lit(commit_seq, dtype=pl.Int32).alias("commit_seq"),
+            )
+            .select(["p", "m_k", "n_k", "q_k", "commit_seq"])
+        )
+        return self._flush_tables(primes_df, decomp_df, commit_seq=commit_seq)
 
     def commit_pending(self) -> None:
         """
@@ -711,11 +749,12 @@ class IcebergWriter:
             [str(p) for p in self.pending_primes],
             snapshot_properties=snap_props,
         )
-        decomp_tbl = self.cat.load_table(DECOMP_IDENT)
-        decomp_tbl.add_files(
-            [str(p) for p in self.pending_decomp],
-            snapshot_properties=snap_props,
-        )
+        if self.pending_decomp:
+            decomp_tbl = self.cat.load_table(DECOMP_IDENT)
+            decomp_tbl.add_files(
+                [str(p) for p in self.pending_decomp],
+                snapshot_properties=snap_props,
+            )
         self.pending_primes.clear()
         self.pending_decomp.clear()
         # Refresh cached handles so subsequent partition_dir() calls see
