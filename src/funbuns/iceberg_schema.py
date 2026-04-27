@@ -437,6 +437,24 @@ class WriteBatchResult:
     decomp_rows: int
 
 
+@dataclass(slots=True)
+class PendingFlush:
+    """One flushed batch's parquet outputs plus its prime-rank identity.
+
+    ``start_idx`` and ``processed_count`` mirror ``PPBatchResult`` so the
+    writer can reconstruct contiguous-by-rank ordering at commit time
+    without reaching back into the manager. Legacy ``flush(raw_df)`` paths
+    (gap fills, tests) leave them as ``None``; ``commit_pending`` with
+    an anchor refuses to mix tagged and untagged flushes.
+    """
+    primes_files: list[Path]
+    decomp_files: list[Path]
+    p_max: int
+    commit_seq: int
+    start_idx: int | None = None
+    processed_count: int | None = None
+
+
 def _to_iceberg_arrow(df: pl.DataFrame, schema: Schema) -> pa.Table:
     target = schema_to_pyarrow(schema)
     tbl = df.to_arrow()
@@ -577,6 +595,10 @@ class IcebergWriter:
         cat: active Catalog handle.
         next_commit_seq: next commit_seq to be assigned on flush().
         resume_p: max prime already committed or pending, 0 if empty.
+        pending: per-batch ``PendingFlush`` records accumulated since last
+            ``commit_pending``; carries the parquet paths plus the
+            (start_idx, processed_count) rank identity used for
+            contiguous-prefix commit.
     """
 
     def __init__(self, cat: Catalog | None = None):
@@ -587,9 +609,7 @@ class IcebergWriter:
         # lifetime; resolve once.
         self._primes_tbl = self.cat.load_table(PRIMES_IDENT)
         self._decomp_tbl = self.cat.load_table(DECOMP_IDENT)
-        self.pending_primes: list[Path] = []
-        self.pending_decomp: list[Path] = []
-        self._pending_max_commit_seq: int = self.next_commit_seq - 1
+        self.pending: list[PendingFlush] = []
 
     def _init_state(self) -> tuple[int, int]:
         try:
@@ -638,6 +658,8 @@ class IcebergWriter:
         decomp_df: pl.DataFrame,
         *,
         commit_seq: int,
+        start_idx: int | None = None,
+        processed_count: int | None = None,
     ) -> WriteBatchResult:
         """Validate and write already-shaped primes/decompositions frames."""
         primes_df = primes_df.sort("p")
@@ -674,9 +696,14 @@ class IcebergWriter:
         else:
             decomp_files = []
 
-        self.pending_primes.extend(primes_files)
-        self.pending_decomp.extend(decomp_files)
-        self._pending_max_commit_seq = commit_seq
+        self.pending.append(PendingFlush(
+            primes_files=primes_files,
+            decomp_files=decomp_files,
+            p_max=batch_max_p,
+            commit_seq=commit_seq,
+            start_idx=start_idx,
+            processed_count=processed_count,
+        ))
         self.next_commit_seq += 1
 
         return WriteBatchResult(
@@ -703,10 +730,17 @@ class IcebergWriter:
         self,
         primes_df: pl.DataFrame,
         decomp_df: pl.DataFrame,
+        *,
+        start_idx: int | None = None,
+        processed_count: int | None = None,
     ) -> WriteBatchResult:
         """
         Hot path for core.py shaped worker output. The frames arrive without
         commit_seq; this method stamps, validates, and writes parquet.
+
+        ``start_idx`` and ``processed_count`` are stored on the PendingFlush
+        so ``commit_pending(anchor_start_idx=...)`` can later commit only
+        the contiguous prime-rank prefix on interrupted shutdown.
         """
         commit_seq = self.next_commit_seq
         primes_df = (
@@ -727,36 +761,96 @@ class IcebergWriter:
             )
             .select(["p", "m_k", "n_k", "q_k", "commit_seq"])
         )
-        return self._flush_tables(primes_df, decomp_df, commit_seq=commit_seq)
+        return self._flush_tables(
+            primes_df,
+            decomp_df,
+            commit_seq=commit_seq,
+            start_idx=start_idx,
+            processed_count=processed_count,
+        )
 
-    def commit_pending(self) -> None:
+    @staticmethod
+    def _contiguous_prefix(
+        pending: list[PendingFlush],
+        *,
+        anchor_start_idx: int,
+    ) -> tuple[list[PendingFlush], list[PendingFlush]]:
+        """Split ``pending`` into (kept, dropped) by prime-rank contiguity.
+
+        Sorted by start_idx, a flush glues iff its start equals the
+        running ``expected`` rank — anchor_start_idx for the first, and
+        ``prev.start_idx + prev.processed_count`` thereafter. A partial
+        last batch (processed_count < the next batch's stride) naturally
+        terminates the prefix because no successor can glue.
         """
-        End-of-run (or checkpoint): register every pending parquet file
-        with one ``add_files`` call per table. Snapshot summary carries
+        if any(f.start_idx is None or f.processed_count is None for f in pending):
+            raise ValueError(
+                "commit_pending(anchor_start_idx=...) requires every flush to "
+                "carry start_idx/processed_count; legacy flush(raw_df) paths "
+                "cannot be mixed in"
+            )
+        ordered = sorted(pending, key=lambda f: f.start_idx)
+        kept: list[PendingFlush] = []
+        expected = anchor_start_idx
+        for f in ordered:
+            if f.start_idx != expected:
+                break
+            kept.append(f)
+            expected = f.start_idx + f.processed_count
+        kept_ids = {id(f) for f in kept}
+        dropped = [f for f in ordered if id(f) not in kept_ids]
+        return kept, dropped
+
+    def commit_pending(self, *, anchor_start_idx: int | None = None) -> None:
+        """
+        End-of-run (or checkpoint): register pending parquet files with one
+        ``add_files`` call per table. Snapshot summary carries
         ``funbuns.max_p`` / ``funbuns.max_commit_seq`` so the next writer
         reads resume state in O(1).
 
+        ``anchor_start_idx`` enables contiguous-prefix mode: pending flushes
+        are sorted by prime rank, only the gap-free prefix anchored at
+        ``anchor_start_idx`` is committed, and post-gap orphan parquet files
+        are deleted from disk. Without an anchor, every pending flush is
+        committed (legacy / clean-exit behavior).
+
         Idempotent: no-op if there's nothing pending.
         """
-        if not self.pending_primes:
+        if not self.pending:
             return
+
+        if anchor_start_idx is not None:
+            kept, dropped = self._contiguous_prefix(
+                self.pending, anchor_start_idx=anchor_start_idx,
+            )
+            for f in dropped:
+                for path in (*f.primes_files, *f.decomp_files):
+                    Path(path).unlink(missing_ok=True)
+        else:
+            kept = list(self.pending)
+
+        if not kept:
+            self.pending.clear()
+            return
+
+        primes_paths = [str(p) for f in kept for p in f.primes_files]
+        decomp_paths = [str(p) for f in kept for p in f.decomp_files]
+        max_p = max(f.p_max for f in kept)
+        max_cs = max(f.commit_seq for f in kept)
         snap_props = {
-            "funbuns.max_p": str(self.resume_p),
-            "funbuns.max_commit_seq": str(self._pending_max_commit_seq),
+            "funbuns.max_p": str(max_p),
+            "funbuns.max_commit_seq": str(max_cs),
         }
-        primes_tbl = self.cat.load_table(PRIMES_IDENT)
-        primes_tbl.add_files(
-            [str(p) for p in self.pending_primes],
+        self._primes_tbl.add_files(
+            primes_paths,
             snapshot_properties=snap_props,
         )
-        if self.pending_decomp:
-            decomp_tbl = self.cat.load_table(DECOMP_IDENT)
-            decomp_tbl.add_files(
-                [str(p) for p in self.pending_decomp],
+        if decomp_paths:
+            self._decomp_tbl.add_files(
+                decomp_paths,
                 snapshot_properties=snap_props,
             )
-        self.pending_primes.clear()
-        self.pending_decomp.clear()
+        self.pending.clear()
         # Refresh cached handles so subsequent partition_dir() calls see
         # the new snapshot.
         self._primes_tbl = self.cat.load_table(PRIMES_IDENT)

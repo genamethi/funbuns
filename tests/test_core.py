@@ -169,7 +169,7 @@ class TestPPManagerShapedAppend:
 
         frames = []
 
-        def append_data(primes_df, decomp_df):
+        def append_data(primes_df, decomp_df, **kwargs):
             frames.append((primes_df, decomp_df))
 
         manager = PPManager(

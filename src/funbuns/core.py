@@ -471,7 +471,12 @@ class PPManager:
                 processed = result.processed_count
                 if processed > 0:
                     primes_df, decomp_df = _result_to_frames(result)
-                    self.append_data(primes_df, decomp_df)
+                    self.append_data(
+                        primes_df,
+                        decomp_df,
+                        start_idx=result.start_idx,
+                        processed_count=processed,
+                    )
 
                     self.primes_processed += processed
                     self.batches_processed += 1
@@ -523,6 +528,7 @@ class PPManager:
             'total_batches': total_batches,
             'init_p': self.init_p,
             'batch_size': self.batch_size,
+            'start_idx': feeder.start_idx,
         }
 
     def get_status(self):

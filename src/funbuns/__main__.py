@@ -284,20 +284,26 @@ def main():
 
     # Create PPManager instance and run
     manager = PPManager(init_p, args.num_primes, args.batch_size, cores,
-                        append_data=writer.flush,
+                        append_data=writer.flush_shaped,
                         verbose=args.verbose)
     gen_status = manager.run_gen() or {}
 
     # Register every parquet file flushed during the run in a single
     # catalog commit. Runs even if interrupted — parquet on disk is
-    # durable and worth registering.
+    # durable and worth registering. The anchor enables contiguous-prefix
+    # filtering at the catalog boundary so an interrupted run never
+    # leaves a gap visible to readers; out-of-order tail files past the
+    # first gap are deleted from disk before add_files.
     try:
-        writer.commit_pending()
+        writer.commit_pending(anchor_start_idx=gen_status.get('start_idx'))
     except Exception as exc:
         journal.log("main", "commit_pending_failed", error=repr(exc))
         raise
 
     elapsed = round(time.monotonic() - t0, 2)
+    primes_processed = gen_status.get('primes_processed', 0)
+    throughput = primes_processed / elapsed if elapsed > 0 else 0.0
+    print(f"Timing: {elapsed:,.2f}s total | {throughput:,.0f} prime/s")
 
     # Emit shutdown/end journal event
     if gen_status.get('interrupted'):
@@ -309,7 +315,7 @@ def main():
     else:
         journal.log("main", "run_end",
                     elapsed_s=elapsed,
-                    primes_processed=gen_status.get('primes_processed', 0))
+                    primes_processed=primes_processed)
 
     # Print resume command if interrupted
     remaining = gen_status.get('primes_not_processed', 0)
