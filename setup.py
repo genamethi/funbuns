@@ -18,13 +18,6 @@ setup(
     package_dir={"": "src"},
     packages=find_packages(where="src"),
     python_requires=">=3.12",
-    install_requires=[
-        "sagemath",
-        "polars",
-        "tqdm",
-        "psutil",
-        "scipy",
-    ],
     entry_points={
         "console_scripts": [
             "funbuns=funbuns.__main__:main",

@@ -16,7 +16,7 @@ from __future__ import annotations
 import argparse
 import uuid
 
-import funbuns  # noqa: F401 — ensures _patches.py monkey-patch is applied
+from funbuns import iceberg_schema  # noqa: F401 — applies _patches via iceberg_schema
 
 from pyiceberg.catalog.sql import SqlCatalog
 from pyiceberg.manifest import (
